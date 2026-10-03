@@ -25,17 +25,21 @@
 }
 
 .topic-tag-forums {
+	display: block;
 	line-height: 1.8;
 }
 
 .topic-tag-forum {
-	display: inline-block;
-	white-space: nowrap;
+	display: block;
+	padding-left: 1em;
+	position: relative;
 }
 
-.topic-tag-forum-separator {
+.topic-tag-forum::before {
 	color: #6B7278;
-	margin-right: 0.5em;
+	content: "\2022";
+	left: 0;
+	position: absolute;
 }
 
 .topic-tag-color,

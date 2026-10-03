@@ -58,13 +58,17 @@ class admin_controller_test extends \phpbb_test_case
 
 	public function test_display_settings_lists_tags_and_edit_form()
 	{
-		$this->manager->method('get_forum_names_by_tag')->willReturn(array(1 => array('Forum Two')));
+		$this->manager->method('get_forum_names_by_tag')->willReturn(array(1 => array(
+			'Forum One', 'Forum Two', 'Forum Three', 'Forum Four', 'Forum Five',
+		)));
 		$this->manager->method('get_tags')->willReturn(array(1 => array(
 			'prefix_id' => 1, 'prefix_tag' => '<Bug>', 'prefix_color' => 'D4351C', 'prefix_enabled' => 1,
 		)));
 		$this->renderer->method('contrast_color')->with('D4351C')->willReturn('#FFFFFF');
 		$this->template->expects(self::once())->method('assign_block_vars')->with('tags', self::callback(function ($row) {
-			return $row['TAG_NAME'] === '&lt;Bug&gt;' && $row['FORUM_NAMES'] === array('Forum Two') && $row['TAG_TEXT_COLOR'] === '#FFFFFF';
+			return $row['TAG_NAME'] === '&lt;Bug&gt;'
+				&& $row['FORUM_NAMES'] === array('Forum One', 'Forum Two', 'Forum Three', 'Forum Four', 'Forum Five')
+				&& $row['TAG_TEXT_COLOR'] === '#FFFFFF';
 		}));
 		$this->template->expects(self::once())->method('assign_vars')->with(self::callback(function ($vars) {
 			return $vars['TAG_ID'] === 0 && $vars['S_FORUM_OPTIONS'] === '#forum options#';

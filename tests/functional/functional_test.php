@@ -68,6 +68,8 @@ class functional_test extends \phpbb_functional_test_case
 
 		$crawler = $this->acp_page();
 		self::assertStringContainsString($emoji_name, $crawler->filter('.topic-tag')->text());
+		self::assertGreaterThanOrEqual(1, $crawler->filter('.topic-tag-forums[role="list"] .topic-tag-forum[role="listitem"]')->count());
+		self::assertCount(0, $crawler->filter('.topic-tag-forums ul, .topic-tag-forums li, .topic-tag-forum-more'));
 
 		$topic = $this->create_topic(self::FORUM_ID, 'Emoji tag topic', 'Emoji tag post', array(
 			'topic_tags' => array($tag_id),

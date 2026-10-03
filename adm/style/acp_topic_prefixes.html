@@ -22,7 +22,7 @@
 				{% if tag.FORUM_NAMES %}
 					<span class="topic-tag-forums" role="list">
 					{% for forum_name in tag.FORUM_NAMES %}
-						<span class="topic-tag-forum" role="listitem">{{ forum_name }}{% if not loop.last %}<span class="topic-tag-forum-separator" aria-hidden="true"> &middot;</span>{% endif %}</span>
+						<span class="topic-tag-forum" role="listitem">{{ forum_name }}</span>
 					{% endfor %}
 					</span>
 				{% else %}
