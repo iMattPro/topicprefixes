@@ -273,6 +273,21 @@ class legacy_migration_test extends tags_base
 		self::assertSame(0, (int) $this->field("SELECT COUNT(*) AS total FROM phpbb_topic_prefixes WHERE prefix_tag = '[A][B]'", 'total'));
 	}
 
+	public function test_legacy_request_escaping_is_decoded_without_rewriting_storage(): void
+	{
+		$this->reset_legacy_data([
+			['[R&amp;D][X]', 1, 2],
+			['Literal &amp;amp;', 1, 2],
+		], true);
+
+		$migration = $this->create_migration();
+		$migration->migrate_legacy_data();
+		self::assertSame('Topic 1', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 100', 'topic_title'));
+		self::assertSame('Topic 1', $this->field('SELECT post_subject FROM phpbb_posts WHERE post_id = 1000', 'post_subject'));
+		self::assertSame(['[R&D]', '[X]', 'Literal &amp;'], $this->tag_names());
+		self::assertSame('[R&amp;D]', $this->field("SELECT prefix_tag FROM phpbb_topic_prefixes WHERE prefix_tag = '[R&amp;D]'", 'prefix_tag'));
+	}
+
 	protected function create_migration()
 	{
 		global $phpbb_root_path, $phpEx;

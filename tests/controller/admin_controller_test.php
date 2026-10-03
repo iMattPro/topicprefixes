@@ -173,6 +173,27 @@ class admin_controller_test extends \phpbb_test_case
 		self::assertStringContainsString('TOPIC_TAG_SAVED', self::$triggered_message);
 	}
 
+	public function test_save_decodes_request_escaping_before_manager(): void
+	{
+		$this->request->method('is_set_post')->with('submit')->willReturn(true);
+		$this->request->method('variable')->willReturnCallback(function ($key, $default) {
+			return array(
+				'tag_name' => 'R&amp;D &lt;Tag&gt; &amp;amp;',
+				'tag_color' => '#4A76A8',
+				'tag_enabled' => 1,
+				'forum_ids' => array(2),
+			)[$key] ?? $default;
+		});
+		$this->manager->expects(self::once())
+			->method('add_tag')
+			->with('R&D <Tag> &amp;', '#4A76A8', 1, array(2))
+			->willReturn(array('prefix_tag' => 'R&D <Tag> &amp;'));
+
+		$this->controller->save_tag(0);
+
+		self::assertStringContainsString('TOPIC_TAG_SAVED', self::$triggered_message);
+	}
+
 	/**
 	 * Test saving an existing tag uses update path.
 	 */

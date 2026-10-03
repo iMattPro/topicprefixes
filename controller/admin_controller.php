@@ -174,7 +174,9 @@ class admin_controller
 			$this->trigger_message('FORM_INVALID', E_USER_WARNING);
 		}
 
-		$name = $this->request->variable('tag_name', '', true);
+		// phpBB's request API HTML-escapes strings. The manager accepts semantic
+		// text and applies the extension's storage encoding exactly once.
+		$name = htmlspecialchars_decode($this->request->variable('tag_name', '', true), ENT_COMPAT);
 		$color = $this->request->variable('tag_color', manager::DEFAULT_COLOR);
 		$enabled = $this->request->variable('tag_enabled', 0);
 		$forum_ids = $this->request->variable('forum_ids', [0]);

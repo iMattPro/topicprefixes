@@ -85,14 +85,15 @@ class repairer_test extends tags_base
 	{
 		$this->db->sql_query("UPDATE phpbb_topic_prefixes SET prefix_tag = 'Combined' WHERE prefix_id = 3");
 
-		$result = $this->create_repairer()->repair(3, ['DEV', 'dev', '日本語', '😇']);
-		self::assertSame(['DEV', 'dev', '日本語', '😇'], array_column($result['targets'], 'prefix_tag'));
-		self::assertCount(4, array_unique(array_column($result['targets'], 'prefix_id')));
+		$result = $this->create_repairer()->repair(3, ['DEV', 'dev', '日本語', '😇', 'R&amp;D']);
+		self::assertSame(['DEV', 'dev', '日本語', '😇', 'R&amp;D'], array_column($result['targets'], 'prefix_tag'));
+		self::assertCount(5, array_unique(array_column($result['targets'], 'prefix_id')));
 		$name_counts = array_count_values(array_column($this->create_tag_manager()->get_tags(), 'prefix_tag'));
 		self::assertSame(1, $name_counts['DEV']);
 		self::assertSame(1, $name_counts['dev']);
 		self::assertSame(1, $name_counts['日本語']);
 		self::assertSame(1, $name_counts['😇']);
+		self::assertSame(1, $name_counts['R&amp;D']);
 	}
 
 	public function test_unicode_source_cannot_target_equivalent_display_name(): void

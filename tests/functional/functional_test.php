@@ -84,6 +84,38 @@ class functional_test extends \phpbb_functional_test_case
 	/**
 	 * @depends test_acp_module
 	 */
+	public function test_acp_tag_name_round_trip_preserves_plain_and_literal_entities($module_ready)
+	{
+		self::assertTrue($module_ready);
+		$name = 'R&D <Tag> &amp;';
+		$this->login();
+		$this->admin_login();
+		$tag_id = $this->create_tag($name, '#4a76a8', array(self::FORUM_ID));
+
+		$this->get_db();
+		$result = $this->db->sql_query('SELECT prefix_tag FROM phpbb_topic_prefixes WHERE prefix_id = ' . $tag_id);
+		self::assertSame('R&amp;D &lt;Tag&gt; &amp;amp;', $this->db->sql_fetchfield('prefix_tag'));
+		$this->db->sql_freeresult($result);
+
+		$crawler = $this->acp_page();
+		$badge_names = $crawler->filter('.topic-tag')->each(function ($badge) {
+			return $badge->text();
+		});
+		self::assertContains($name, $badge_names);
+		$crawler = $this->acp_page('action=edit&tag_id=' . $tag_id);
+		self::assertSame($name, $crawler->filter('input[name="tag_name"]')->attr('value'));
+		$form = $crawler->selectButton($this->lang('SUBMIT'))->form();
+		$crawler = self::submit($form);
+		$this->assertContainsLang('TOPIC_TAG_SAVED', $crawler->text());
+
+		$result = $this->db->sql_query('SELECT prefix_tag FROM phpbb_topic_prefixes WHERE prefix_id = ' . $tag_id);
+		self::assertSame('R&amp;D &lt;Tag&gt; &amp;amp;', $this->db->sql_fetchfield('prefix_tag'));
+		$this->db->sql_freeresult($result);
+	}
+
+	/**
+	 * @depends test_acp_module
+	 */
 	public function test_create_shared_tagged_topic($module_ready)
 	{
 		self::assertTrue($module_ready);
@@ -337,7 +369,8 @@ class functional_test extends \phpbb_functional_test_case
 		$this->assertContainsLang('TOPIC_TAG_SAVED', $crawler->text());
 
 		$this->get_db();
-		$sql = "SELECT prefix_id FROM phpbb_topic_prefixes WHERE prefix_tag = '" . $this->db->sql_escape($name) . "' ORDER BY prefix_id DESC";
+		$stored_name = \phpbb\topicprefixes\tags\manager::normalize_name($name);
+		$sql = "SELECT prefix_id FROM phpbb_topic_prefixes WHERE prefix_tag = '" . $this->db->sql_escape($stored_name) . "' ORDER BY prefix_id DESC";
 		$result = $this->db->sql_query_limit($sql, 1);
 		$tag_id = (int) $this->db->sql_fetchfield('prefix_id');
 		$this->db->sql_freeresult($result);

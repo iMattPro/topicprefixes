@@ -138,6 +138,10 @@ class tag_manager_test extends tags_base
 		self::assertSame(str_repeat('a', 50), \phpbb\topicprefixes\tags\manager::normalize_name(str_repeat('a', 50)));
 		self::assertSame('', \phpbb\topicprefixes\tags\manager::normalize_name(str_repeat('a', 51)));
 		self::assertSame('&#128519;', \phpbb\topicprefixes\tags\manager::normalize_name('😇'));
+		self::assertSame('R&amp;D', \phpbb\topicprefixes\tags\manager::normalize_name('R&D'));
+		self::assertSame('R&amp;amp;D', \phpbb\topicprefixes\tags\manager::normalize_name('R&amp;D'));
+		self::assertSame('R&D', \phpbb\topicprefixes\tags\manager::decode_name('R&amp;D'));
+		self::assertSame('R&amp;D', \phpbb\topicprefixes\tags\manager::decode_name('R&amp;amp;D'));
 		self::assertSame('', \phpbb\topicprefixes\tags\manager::normalize_name(str_repeat('😇', 29)));
 	}
 

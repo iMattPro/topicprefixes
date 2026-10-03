@@ -391,10 +391,11 @@ class manager
 	}
 
 	/**
-	 * Prepare tag text for phpBB's portable Unicode database storage.
+	 * Prepare semantic tag text for phpBB's encoded database storage.
 	 *
-	 * Four-byte characters are stored as numeric Unicode references. Reject
-	 * names whose stored representation would exceed the legacy column size.
+	 * HTML-sensitive characters are escaped and four-byte characters are stored
+	 * as numeric Unicode references. Reject names whose stored representation
+	 * would exceed the legacy column size.
 	 *
 	 * @param string $name Submitted tag text
 	 * @return string Storage-safe text, or empty string when invalid
@@ -406,20 +407,21 @@ class manager
 		{
 			return '';
 		}
+		$name = utf8_htmlspecialchars($name);
 		$name = utf8_encode_ucr($name);
 
 		return utf8_strlen($name) <= self::MAX_NAME_STORAGE_LENGTH ? $name : '';
 	}
 
 	/**
-	 * Restore phpBB's database-safe Unicode references for presentation.
+	 * Restore stored HTML and Unicode references to semantic tag text.
 	 *
 	 * @param string $name Stored tag text
 	 * @return string Display text
 	 */
 	public static function decode_name(string $name): string
 	{
-		return utf8_decode_ncr($name);
+		return htmlspecialchars_decode(utf8_decode_ncr($name), ENT_COMPAT);
 	}
 
 	/**
