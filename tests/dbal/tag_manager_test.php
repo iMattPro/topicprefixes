@@ -40,26 +40,26 @@ class tag_manager_test extends tags_base
 		self::assertFalse($manager->get_tag($tag['prefix_id']));
 	}
 
-	public function test_four_byte_tag_names_use_phpbb_unicode_storage()
+	public function test_unicode_tag_names_use_phpbb_unicode_storage()
 	{
 		$manager = $this->create_tag_manager();
-		$tag = $manager->add_tag('😇', '4A76A8', true, array(2));
+		$tag = $manager->add_tag('日本語 😇', '4A76A8', true, array(2));
 
-		self::assertSame('😇', $tag['prefix_tag']);
+		self::assertSame('日本語 😇', $tag['prefix_tag']);
 		$result = $this->db->sql_query('SELECT prefix_tag
 			FROM phpbb_topic_prefixes
 			WHERE prefix_id = ' . (int) $tag['prefix_id']);
-		self::assertSame('&#128519;', $this->db->sql_fetchfield('prefix_tag'));
+		self::assertSame('日本語 &#128519;', $this->db->sql_fetchfield('prefix_tag'));
 		$this->db->sql_freeresult($result);
 
-		$tag = $manager->update_tag($tag['prefix_id'], 'Fixed 🚀', '4A76A8', true, array(2));
-		self::assertSame('Fixed 🚀', $tag['prefix_tag']);
+		$tag = $manager->update_tag($tag['prefix_id'], '修正 🚀', '4A76A8', true, array(2));
+		self::assertSame('修正 🚀', $tag['prefix_tag']);
 		$result = $this->db->sql_query('SELECT prefix_tag
 			FROM phpbb_topic_prefixes
 			WHERE prefix_id = ' . (int) $tag['prefix_id']);
-		self::assertSame('Fixed &#128640;', $this->db->sql_fetchfield('prefix_tag'));
+		self::assertSame('修正 &#128640;', $this->db->sql_fetchfield('prefix_tag'));
 		$this->db->sql_freeresult($result);
-		self::assertSame('Fixed 🚀', $this->create_tag_manager()->get_tag($tag['prefix_id'])['prefix_tag']);
+		self::assertSame('修正 🚀', $this->create_tag_manager()->get_tag($tag['prefix_id'])['prefix_tag']);
 	}
 
 	public function test_delete_cascades_availability_and_topic_assignments()

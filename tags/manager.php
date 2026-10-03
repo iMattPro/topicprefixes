@@ -188,12 +188,10 @@ class manager
 		$this->db->sql_freeresult($result);
 
 		$this->db->sql_transaction('begin');
-		$sql = 'INSERT INTO ' . $this->tags_table . ' ' . $this->db->sql_build_array('INSERT', [
-			'prefix_tag' => $name,
-			'prefix_color' => $color,
-			'prefix_enabled' => (int) (bool) $enabled,
-			'prefix_order' => $max_order + 1,
-		]);
+		$sql = 'INSERT INTO ' . $this->tags_table . '
+			(prefix_tag, prefix_color, prefix_enabled, prefix_order)
+			VALUES (' . $this->sql_text_literal($name) . ', ' . $this->sql_text_literal($color) . ', ' .
+			(int) (bool) $enabled . ', ' . ($max_order + 1) . ')';
 		$this->db->sql_query($sql);
 		$tag_id = (int) $this->db->sql_nextid();
 		$this->replace_forums($tag_id, $forum_ids);
@@ -225,11 +223,9 @@ class manager
 
 		$this->db->sql_transaction('begin');
 		$sql = 'UPDATE ' . $this->tags_table . '
-			SET ' . $this->db->sql_build_array('UPDATE', [
-				'prefix_tag' => $name,
-				'prefix_color' => $color,
-				'prefix_enabled' => (int) (bool) $enabled,
-			]) . '
+			SET prefix_tag = ' . $this->sql_text_literal($name) . ',
+				prefix_color = ' . $this->sql_text_literal($color) . ',
+				prefix_enabled = ' . (int) (bool) $enabled . '
 			WHERE prefix_id = ' . $tag_id;
 		$this->db->sql_query($sql);
 		$this->replace_forums($tag_id, $forum_ids);
@@ -501,6 +497,16 @@ class manager
 		{
 			$this->cache->destroy(self::CACHE_KEY);
 		}
+	}
+
+	/**
+	 * Quote text for portable Unicode SQL literals.
+	 */
+	protected function sql_text_literal(string $value): string
+	{
+		$unicode_prefix = strpos($this->db->get_sql_layer(), 'mssql') === 0 ? 'N' : '';
+
+		return $unicode_prefix . "'" . $this->db->sql_escape($value) . "'";
 	}
 
 	/**

@@ -82,7 +82,26 @@ abstract class tags_base extends \phpbb_database_test_case
 
 		try
 		{
-			$this->db->sql_multi_insert($table, $rows);
+			if ($mssql)
+			{
+				foreach ($rows as $row)
+				{
+					$values = [];
+					foreach ($row as $value)
+					{
+						$values[] = is_string($value)
+							? "N'" . $this->db->sql_escape($value) . "'"
+							: ($value === null ? 'NULL' : (string) (is_bool($value) ? (int) $value : $value));
+					}
+					$this->db->sql_query('INSERT INTO ' . $table . '
+						(' . implode(', ', array_keys($row)) . ')
+						VALUES (' . implode(', ', $values) . ')');
+				}
+			}
+			else
+			{
+				$this->db->sql_multi_insert($table, $rows);
+			}
 		}
 		finally
 		{

@@ -282,12 +282,12 @@ class repairer
 				}
 				else
 				{
-					$this->db->sql_query('INSERT INTO ' . $this->tags_table . ' ' . $this->db->sql_build_array('INSERT', [
-						'prefix_tag' => $target['stored_name'],
-						'prefix_color' => $source['prefix_color'],
-						'prefix_enabled' => $source['prefix_enabled'],
-						'prefix_order' => $source['prefix_order'],
-					]));
+					$sql = 'INSERT INTO ' . $this->tags_table . '
+						(prefix_tag, prefix_color, prefix_enabled, prefix_order)
+						VALUES (' . $this->sql_text_literal($target['stored_name']) . ', ' .
+						$this->sql_text_literal($source['prefix_color']) . ', ' .
+						(int) $source['prefix_enabled'] . ', ' . (int) $source['prefix_order'] . ')';
+					$this->db->sql_query($sql);
 					$target['prefix_id'] = (int) $this->db->sql_nextid();
 					$target['prefix_enabled'] = $source['prefix_enabled'];
 				}

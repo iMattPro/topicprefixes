@@ -183,17 +183,12 @@ class v200_data extends \phpbb\db\migration\migration
 				}
 				else
 				{
-					$this->db->sql_query('INSERT INTO ' . $tables['topic_prefixes'] . ' ' . $this->db->sql_build_array('INSERT', [
-						'prefix_tag' => $name,
-						'prefix_color' => self::DEFAULT_COLOR,
-						'prefix_enabled' => (int) !empty($source['prefix_enabled']),
-						'prefix_order' => (int) $source['prefix_order'],
-						'prefix_parent_id' => 0,
-						'prefix_left_id' => 0,
-						'prefix_right_id' => 0,
-						'prefix_parents' => '',
-						'forum_id' => 0,
-					]));
+					$sql = 'INSERT INTO ' . $tables['topic_prefixes'] . '
+						(prefix_tag, prefix_color, prefix_enabled, prefix_order, prefix_parent_id,
+							prefix_left_id, prefix_right_id, prefix_parents, forum_id)
+						VALUES (' . $this->sql_text_literal($name) . ", '" . self::DEFAULT_COLOR . "', " .
+						(int) !empty($source['prefix_enabled']) . ', ' . (int) $source['prefix_order'] . ", 0, 0, 0, '', 0)";
+					$this->db->sql_query($sql);
 					$target_id = (int) $this->db->sql_nextid();
 					$known_tags[$key] = [
 						'prefix_id' => $target_id,
