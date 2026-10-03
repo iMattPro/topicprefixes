@@ -24,4 +24,5 @@ $lang = array_merge($lang, [
 	'ACP_LOG_TAG_ADDED' => '<strong>Created topic tag</strong><br>» %s',
 	'ACP_LOG_TAG_UPDATED' => '<strong>Updated topic tag</strong><br>» %s',
 	'ACP_LOG_TAG_DELETED' => '<strong>Deleted topic tag</strong><br>» %s',
+	'TOPIC_PREFIXES_UPGRADE_BOARD_ENABLED' => 'Topic Prefixes 2.0 must migrate your legacy prefix data. Before enabling it, back up your database and disable your board under General, Board settings. Then try enabling the extension again.',
 ]);

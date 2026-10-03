@@ -27,10 +27,52 @@ class ext extends \phpbb\extension\base
 	 *
 	 * Requires phpBB 3.3.5 and PHP 7.2
 	 *
-	 * @return bool
+	 * @return bool|string
 	 */
 	public function is_enableable()
 	{
-		return phpbb_version_compare(PHPBB_VERSION, '3.3.5', '>=') && PHP_VERSION_ID >= 70200;
+		if (PHP_VERSION_ID < 70200 || !phpbb_version_compare(PHPBB_VERSION, '3.3.5', '>='))
+		{
+			return false;
+		}
+
+		$config = $this->container->get('config');
+		if (!empty($config['board_disable']) || !$this->is_legacy_upgrade())
+		{
+			return true;
+		}
+
+		$language = $this->container->get('language');
+		$language->add_lang('info_acp_topic_prefixes', $this->extension_name);
+
+		return $language->lang('TOPIC_PREFIXES_UPGRADE_BOARD_ENABLED');
+	}
+
+	/**
+	 * Check for a legacy installation that has not started enabling v2.
+	 *
+	 * A fresh installation temporarily creates the legacy schema because the
+	 * v2 migrations depend on the original install migrations. Its serialized
+	 * "true" extension state identifies an enable operation already in progress.
+	 *
+	 * @return bool
+	 */
+	protected function is_legacy_upgrade(): bool
+	{
+		$db_tools = $this->container->get('dbal.tools');
+		$topics_table = $this->container->getParameter('tables.topics');
+
+		if (!$db_tools->sql_column_exists($topics_table, 'topic_prefix_id'))
+		{
+			return false;
+		}
+
+		$configured = $this->container->get('ext.manager')->all_configured(false);
+		if (!isset($configured[$this->extension_name]['ext_state']))
+		{
+			return true;
+		}
+
+		return $configured[$this->extension_name]['ext_state'] !== serialize(true);
 	}
 }
