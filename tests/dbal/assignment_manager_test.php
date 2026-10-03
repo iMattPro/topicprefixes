@@ -59,7 +59,7 @@ class assignment_manager_test extends tags_base
 	}
 
 	/**
-	 * Test moving a topic preserves its tags and exposes them for forum filters.
+	 * Test moving a topic preserves its tags.
 	 */
 	public function test_topic_move_preserves_assignments(): void
 	{
@@ -67,7 +67,6 @@ class assignment_manager_test extends tags_base
 		$manager = $this->create_assignment_manager();
 
 		self::assertSame(array(2), $manager->get_topic_tag_ids(12));
-		self::assertSame(array(2), $manager->get_tag_ids_for_forum(3));
 	}
 
 	/**
@@ -139,8 +138,6 @@ class assignment_manager_test extends tags_base
 		$manager = $this->create_assignment_manager();
 
 		self::assertSame([1, 2], array_keys($manager->get_tags_for_displayed_topics([13])[13]));
-		self::assertSame([1, 2], $manager->get_tag_ids_for_forum(3));
-		self::assertSame([2], $manager->get_tag_ids_for_forum(3, [2]));
 	}
 
 	/**
@@ -158,13 +155,4 @@ class assignment_manager_test extends tags_base
 		self::assertSame(2, $this->db->sql_num_queries() - $before);
 	}
 
-	/**
-	 * Test global-topic tags are filterable in every forum.
-	 */
-	public function test_global_topic_tags_are_available_to_forum_filters(): void
-	{
-		$this->db->sql_query('UPDATE phpbb_topics SET forum_id = 0, topic_type = ' . POST_GLOBAL . ' WHERE topic_id = 10');
-
-		self::assertSame([1, 2], $this->create_assignment_manager()->get_tag_ids_for_forum(3));
-	}
 }

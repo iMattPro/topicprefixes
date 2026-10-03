@@ -48,7 +48,7 @@ class viewforum_listener_test extends \phpbb_test_case
 		});
 		$manager->method('get_unavailable_tag_ids')->with(2)->willReturn([2]);
 		$manager->method('get_tags_by_ids')->with([2])->willReturn(array(2 => $tags[2]));
-		$assignments->expects(self::once())->method('get_tag_ids_for_forum')->with(2, [2])->willReturn([2]);
+		$filter->expects(self::once())->method('get_visible_tag_ids_for_forum')->with(2, [2])->willReturn([2]);
 		$request->method('variable')->with('tags', '')->willReturn('1,2');
 		$filter->expects(self::once())->method('count_topics')->with(2, array(1, 2), 0)->willReturn(7);
 		$filter->method('condition')->willReturn('FILTER_CONDITION');
@@ -110,14 +110,15 @@ class viewforum_listener_test extends \phpbb_test_case
 	/**
 	 * Provide preserved-tag filter visibility cases.
 	 *
-	 * @return array Requested filters, visible choices, and active filters
+	 * @return array Requested filters, visible assignments, visible choices, and active filters
 	 */
 	public function preserved_tag_visibility_data(): array
 	{
 		return array(
-			array('', array(1), array()),
-			array('2', array(1, 2), array(2)),
-			array('3', array(1, 3), array(3)),
+			array('', array(2, 3), array(1), array()),
+			array('2', array(2, 3), array(1, 2), array(2)),
+			array('3', array(2, 3), array(1, 3), array(3)),
+			array('2', array(), array(1), array()),
 		);
 	}
 
@@ -126,7 +127,7 @@ class viewforum_listener_test extends \phpbb_test_case
 	 *
 	 * @dataProvider preserved_tag_visibility_data
 	 */
-	public function test_preserved_filter_visibility(string $requested, array $visible_ids, array $selected_ids): void
+	public function test_preserved_filter_visibility(string $requested, array $visible_assignment_ids, array $visible_ids, array $selected_ids): void
 	{
 		$manager = $this->getMockBuilder('\phpbb\topicprefixes\tags\manager')->disableOriginalConstructor()->getMock();
 		$assignments = $this->getMockBuilder('\phpbb\topicprefixes\tags\assignment_manager')->disableOriginalConstructor()->getMock();
@@ -146,8 +147,11 @@ class viewforum_listener_test extends \phpbb_test_case
 
 		$manager->method('get_available_tags')->with(2, false)->willReturn($forum_tags);
 		$manager->method('get_unavailable_tag_ids')->with(2)->willReturn(array(2, 3));
-		$manager->method('get_tags_by_ids')->with(array(2, 3))->willReturn($preserved_tags);
-		$assignments->method('get_tag_ids_for_forum')->with(2, array(2, 3))->willReturn(array(2, 3));
+		$manager->method('get_tags_by_ids')->with($visible_assignment_ids)->willReturn(array_intersect_key(
+			$preserved_tags,
+			array_fill_keys($visible_assignment_ids, true)
+		));
+		$filter->method('get_visible_tag_ids_for_forum')->with(2, array(2, 3))->willReturn($visible_assignment_ids);
 		$request->method('variable')->with('tags', '')->willReturn($requested);
 		$renderer->expects(self::once())->method('render')->with(
 			self::callback(function ($tags) use ($visible_ids) {
@@ -192,7 +196,6 @@ class viewforum_listener_test extends \phpbb_test_case
 		$manager->method('get_available_tags')->willReturn(array());
 		$manager->method('get_unavailable_tag_ids')->willReturn(array());
 		$manager->method('get_tags_by_ids')->willReturn(array());
-		$assignments->method('get_tag_ids_for_forum')->willReturn(array());
 		$request->method('variable')->with('tags', '')->willReturn('1,invalid');
 		$filter->expects(self::never())->method('count_topics');
 		$renderer->method('render')->willReturn(array());

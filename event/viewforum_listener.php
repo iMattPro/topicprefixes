@@ -114,7 +114,7 @@ class viewforum_listener implements EventSubscriberInterface
 		});
 		$unavailable_ids = $this->manager->get_unavailable_tag_ids($this->forum_id);
 		$assigned_ids = $unavailable_ids
-			? $this->assignments->get_tag_ids_for_forum($this->forum_id, $unavailable_ids)
+			? $this->filter->get_visible_tag_ids_for_forum($this->forum_id, $unavailable_ids)
 			: [];
 		$assigned = $this->manager->get_tags_by_ids($assigned_ids);
 		$filterable = $forum_tags + $assigned;

@@ -384,44 +384,6 @@ class assignment_manager
 	}
 
 	/**
-	 * Get tag IDs assigned to topics displayed in one forum.
-	 *
-	 * Includes tags that are disabled or unavailable for new assignments in the
-	 * forum, tags reached through move shadows, and tags on global announcements.
-	 *
-	 * @param int   $forum_id     Forum identifier
-	 * @param array $candidate_ids Optional tag identifiers to examine
-	 * @return array Tag identifiers
-	 */
-	public function get_tag_ids_for_forum(int $forum_id, array $candidate_ids = []): array
-	{
-		$candidate_ids = $this->normalize_ids($candidate_ids);
-		$effective_topic_id = $this->db->sql_case(
-			't.topic_moved_id <> 0',
-			't.topic_moved_id',
-			't.topic_id'
-		);
-		$sql = 'SELECT DISTINCT pt.prefix_id
-			FROM ' . $this->topic_map_table . ' pt
-			INNER JOIN ' . $this->topics_table . ' t
-				ON pt.topic_id = ' . $effective_topic_id . '
-			WHERE (t.forum_id = ' . (int) $forum_id . '
-				OR t.topic_type = ' . POST_GLOBAL . ')' .
-			($candidate_ids ? '
-				AND ' . $this->db->sql_in_set('pt.prefix_id', $candidate_ids) : '') . '
-			ORDER BY pt.prefix_id ASC';
-		$result = $this->db->sql_query($sql);
-		$tag_ids = [];
-		while ($row = $this->db->sql_fetchrow($result))
-		{
-			$tag_ids[] = (int) $row['prefix_id'];
-		}
-		$this->db->sql_freeresult($result);
-
-		return $tag_ids;
-	}
-
-	/**
 	 * Check whether a topic exists.
 	 *
 	 * @param int $topic_id Topic identifier

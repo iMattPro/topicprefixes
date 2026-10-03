@@ -86,6 +86,7 @@ services:
         arguments:
             - '@dbal.conn'
             - '@content.visibility'
+            - '@auth'
             - '%phpbb.topicprefixes.tables.topic_prefixes_topics%'
             - '%tables.topics%'
 
