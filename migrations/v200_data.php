@@ -10,6 +10,8 @@
 
 namespace phpbb\topicprefixes\migrations;
 
+use phpbb\topicprefixes\tags\manager as tag_manager;
+
 /**
  * Convert legacy title prefixes to relational topic tags.
  */
@@ -80,6 +82,7 @@ class v200_data extends \phpbb\db\migration\migration
 
 		$this->migrate_tag_definitions($tables['topic_prefixes']);
 		$this->migrate_forum_availability($tables['topic_prefixes'], $tables['topic_prefixes_forums']);
+		list($tag_map, $split_source_ids) = $this->prepare_legacy_tags($tables);
 
 		$last_topic_id = 0;
 		do
@@ -91,9 +94,11 @@ class v200_data extends \phpbb\db\migration\migration
 			}
 
 			$last_topic_id = (int) end($topics)['topic_id'];
-			$this->migrate_topic_batch($tables, $topics);
+			$this->migrate_topic_batch($tables, $topics, $tag_map);
 		}
 		while (count($topics) === self::BATCH_SIZE);
+
+		$this->remove_split_sources($tables, $split_source_ids);
 	}
 
 	/**
@@ -106,8 +111,174 @@ class v200_data extends \phpbb\db\migration\migration
 	{
 		$sql = 'UPDATE ' . $tags_table . "
 			SET prefix_color = '" . self::DEFAULT_COLOR . "',
-				prefix_order = prefix_left_id";
+				prefix_order = prefix_left_id
+			WHERE prefix_order = 0";
 		$this->db->sql_query($sql);
+	}
+
+	/**
+	 * Create individual tags for bracketed legacy prefixes.
+	 *
+	 * @param array $tables Migration table names
+	 * @return array Source-to-target map and split source identifiers
+	 */
+	protected function prepare_legacy_tags(array $tables): array
+	{
+		$sql = 'SELECT prefix_id, prefix_tag, prefix_enabled, prefix_order, forum_id
+			FROM ' . $tables['topic_prefixes'] . '
+			ORDER BY prefix_order ASC, prefix_id ASC';
+		$result = $this->db->sql_query($sql);
+		$sources = [];
+		$known_tags = [];
+		while ($row = $this->db->sql_fetchrow($result))
+		{
+			$sources[] = $row;
+			$key = base64_encode(tag_manager::decode_name($row['prefix_tag']));
+			if (!isset($known_tags[$key]))
+			{
+				$known_tags[$key] = [
+					'prefix_id' => (int) $row['prefix_id'],
+					'prefix_enabled' => (int) $row['prefix_enabled'],
+				];
+			}
+		}
+		$this->db->sql_freeresult($result);
+
+		$sql = 'SELECT forum_id, prefix_id FROM ' . $tables['topic_prefixes_forums'];
+		$result = $this->db->sql_query($sql);
+		$forum_keys = [];
+		while ($row = $this->db->sql_fetchrow($result))
+		{
+			$forum_keys[(int) $row['forum_id'] . ':' . (int) $row['prefix_id']] = true;
+		}
+		$this->db->sql_freeresult($result);
+
+		$tag_map = [];
+		$split_source_ids = [];
+		$forum_rows = [];
+		foreach ($sources as $source)
+		{
+			$source_id = (int) $source['prefix_id'];
+			$names = $this->split_legacy_tag($source['prefix_tag']);
+			if (!$names)
+			{
+				$tag_map[$source_id] = [$source_id];
+				continue;
+			}
+
+			$split_source_ids[] = $source_id;
+			foreach (array_unique($names) as $name)
+			{
+				$key = base64_encode(tag_manager::decode_name($name));
+				if (isset($known_tags[$key]))
+				{
+					$target_id = $known_tags[$key]['prefix_id'];
+					if (!empty($source['prefix_enabled']) && empty($known_tags[$key]['prefix_enabled']))
+					{
+						$this->db->sql_query('UPDATE ' . $tables['topic_prefixes'] . '
+							SET prefix_enabled = 1
+							WHERE prefix_id = ' . $target_id);
+						$known_tags[$key]['prefix_enabled'] = 1;
+					}
+				}
+				else
+				{
+					$this->db->sql_query('INSERT INTO ' . $tables['topic_prefixes'] . ' ' . $this->db->sql_build_array('INSERT', [
+						'prefix_tag' => $name,
+						'prefix_color' => self::DEFAULT_COLOR,
+						'prefix_enabled' => (int) !empty($source['prefix_enabled']),
+						'prefix_order' => (int) $source['prefix_order'],
+						'prefix_parent_id' => 0,
+						'prefix_left_id' => 0,
+						'prefix_right_id' => 0,
+						'prefix_parents' => '',
+						'forum_id' => 0,
+					]));
+					$target_id = (int) $this->db->sql_nextid();
+					$known_tags[$key] = [
+						'prefix_id' => $target_id,
+						'prefix_enabled' => (int) !empty($source['prefix_enabled']),
+					];
+				}
+
+				$tag_map[$source_id][] = $target_id;
+				$forum_key = (int) $source['forum_id'] . ':' . $target_id;
+				if (!empty($source['forum_id']) && !isset($forum_keys[$forum_key]))
+				{
+					$forum_rows[] = [
+						'forum_id' => (int) $source['forum_id'],
+						'prefix_id' => $target_id,
+					];
+					$forum_keys[$forum_key] = true;
+				}
+			}
+		}
+
+		if ($forum_rows)
+		{
+			$this->db->sql_multi_insert($tables['topic_prefixes_forums'], $forum_rows);
+		}
+
+		return [$tag_map, $split_source_ids];
+	}
+
+	/**
+	 * Split a complete sequence containing multiple bracketed labels.
+	 *
+	 * Mixed, empty, or invalid values remain unchanged.
+	 *
+	 * @param string $stored_name Database-safe legacy tag name
+	 * @return array Split tag names, or an empty array when unchanged
+	 */
+	protected function split_legacy_tag(string $stored_name): array
+	{
+		$name = tag_manager::decode_name($stored_name);
+		if (!preg_match('/\A(?:\[[^\[\]]+\])+\z/u', $name))
+		{
+			return [];
+		}
+
+		preg_match_all('/\[([^\[\]]+)\]/u', $name, $matches, PREG_SET_ORDER);
+		if (count($matches) < 2)
+		{
+			return [];
+		}
+
+		$names = [];
+		foreach ($matches as $match)
+		{
+			$normalized = tag_manager::normalize_name($match[0]);
+			if (trim($match[1]) === '' || $normalized === '')
+			{
+				return [];
+			}
+			$names[] = $normalized;
+		}
+
+		return $names;
+	}
+
+	/**
+	 * Remove obsolete combined-prefix definitions after all topics are mapped.
+	 *
+	 * @param array $tables     Migration table names
+	 * @param array $source_ids Split legacy tag identifiers
+	 * @return void
+	 */
+	protected function remove_split_sources(array $tables, array $source_ids): void
+	{
+		if (!$source_ids)
+		{
+			return;
+		}
+
+		$this->db->sql_transaction('begin');
+		foreach (['topic_prefixes_forums', 'topic_prefixes_topics', 'topic_prefixes'] as $table)
+		{
+			$this->db->sql_query('DELETE FROM ' . $tables[$table] . '
+				WHERE ' . $this->db->sql_in_set('prefix_id', $source_ids));
+		}
+		$this->db->sql_transaction('commit');
 	}
 
 	/**
@@ -180,11 +351,12 @@ class v200_data extends \phpbb\db\migration\migration
 	/**
 	 * Migrate one topic batch in a transaction.
 	 *
-	 * @param array $tables Migration table names
-	 * @param array $topics Legacy topic rows
+	 * @param array $tables  Migration table names
+	 * @param array $topics  Legacy topic rows
+	 * @param array $tag_map Legacy-to-relational tag map
 	 * @return void
 	 */
-	protected function migrate_topic_batch(array $tables, array $topics): void
+	protected function migrate_topic_batch(array $tables, array $topics, array $tag_map): void
 	{
 		$topic_ids = array_map('intval', array_column($topics, 'topic_id'));
 		$existing = $this->get_existing_assignments($tables['topic_prefixes_topics'], $topic_ids);
@@ -197,10 +369,13 @@ class v200_data extends \phpbb\db\migration\migration
 		foreach ($topics as $topic)
 		{
 			$topic_id = (int) $topic['topic_id'];
-			$tag_id = (int) $topic['topic_prefix_id'];
-			if (empty($topic['topic_moved_id']) && empty($existing[$topic_id][$tag_id]))
+			$source_id = (int) $topic['topic_prefix_id'];
+			foreach ($tag_map[$source_id] ?? [$source_id] as $tag_id)
 			{
-				$assignments[] = ['topic_id' => $topic_id, 'prefix_id' => $tag_id];
+				if (empty($topic['topic_moved_id']) && empty($existing[$topic_id][$tag_id]))
+				{
+					$assignments[] = ['topic_id' => $topic_id, 'prefix_id' => $tag_id];
+				}
 			}
 
 			$legacy_text = $topic['prefix_tag'] . ' ';

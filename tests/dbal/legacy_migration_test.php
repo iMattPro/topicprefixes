@@ -36,7 +36,7 @@ class legacy_migration_test extends tags_base
 		$this->tools->sql_column_add('phpbb_topic_prefixes', 'forum_id', array('UINT', 0));
 		$pdo = $this->getConnection()->getConnection();
 
-		$this->db->sql_query("UPDATE phpbb_topic_prefixes SET prefix_left_id = prefix_id * 2 - 1, prefix_right_id = prefix_id * 2, forum_id = 2");
+		$this->db->sql_query("UPDATE phpbb_topic_prefixes SET prefix_left_id = prefix_id * 2 - 1, prefix_right_id = prefix_id * 2, prefix_order = 0, forum_id = 2");
 		$statement = $pdo->prepare('UPDATE phpbb_topic_prefixes SET prefix_tag = ? WHERE prefix_id = 1');
 		$statement->execute(array('バグ'));
 		$this->db->sql_query('DELETE FROM phpbb_topic_prefixes_forums WHERE prefix_id = 4');
@@ -160,6 +160,119 @@ class legacy_migration_test extends tags_base
 		$this->db->sql_freeresult($result);
 	}
 
+	public function test_combined_bracket_prefixes_become_shared_tags()
+	{
+		$definitions = [
+			['[3.3][DEV]', 0, 2],
+			['[3.3][ALPHA]', 1, 2],
+			['[3.3][BETA]', 1, 2],
+			['[3.3][RC]', 1, 2],
+			['[CDB]', 1, 2],
+			['[4.0][DEV]', 1, 3],
+			['[4.0][ALPHA]', 1, 3],
+			['[4.0][BETA]', 1, 3],
+			['[4.0][RC]', 1, 3],
+		];
+		$this->reset_legacy_data($definitions, true);
+
+		$migration = $this->create_migration();
+		$migration->migrate_legacy_data();
+		$migration->migrate_legacy_data();
+
+		self::assertSame(['[3.3]', '[DEV]', '[ALPHA]', '[BETA]', '[RC]', '[CDB]', '[4.0]'], $this->tag_names());
+		self::assertSame(['[3.3]', '[DEV]'], $this->topic_tag_names(100));
+		self::assertSame(['[CDB]'], $this->topic_tag_names(104));
+		self::assertSame(['[DEV]', '[4.0]'], $this->topic_tag_names(105));
+		self::assertSame(17, (int) $this->field('SELECT COUNT(*) AS total FROM phpbb_topic_prefixes_topics', 'total'));
+		self::assertSame(1, (int) $this->field("SELECT prefix_enabled FROM phpbb_topic_prefixes WHERE prefix_tag = '[DEV]'", 'prefix_enabled'));
+		self::assertSame(2, (int) $this->field("SELECT COUNT(*) AS total
+			FROM phpbb_topic_prefixes_forums pf
+			INNER JOIN phpbb_topic_prefixes p ON p.prefix_id = pf.prefix_id
+			WHERE p.prefix_tag = '[DEV]'", 'total'));
+		self::assertSame(0, (int) $this->field("SELECT COUNT(*) AS total FROM phpbb_topic_prefixes WHERE prefix_tag = '[3.3][DEV]'", 'total'));
+		self::assertSame(5, (int) $this->field("SELECT prefix_id FROM phpbb_topic_prefixes WHERE prefix_tag = '[CDB]'", 'prefix_id'));
+		self::assertSame('Topic 1', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 100', 'topic_title'));
+		self::assertSame('Topic 1', $this->field('SELECT post_subject FROM phpbb_posts WHERE post_id = 1000', 'post_subject'));
+	}
+
+	public function test_only_complete_valid_bracket_sequences_are_split()
+	{
+		$oversized = '[' . str_repeat('x', 51) . '][B]';
+		$this->reset_legacy_data([
+			['[CDB]', 1, 2],
+			['[ A ][B]', 1, 2],
+			['PHP 8.4', 1, 2],
+			['[A] extra', 1, 2],
+			['[A] [B]', 1, 2],
+			['[A][ ]', 1, 2],
+			[$oversized, 1, 2],
+			['[DEV][dev]', 1, 2],
+			['[日本語][😇]', 1, 2],
+		]);
+
+		$this->create_migration()->migrate_legacy_data();
+
+		$expected = [
+			'[CDB]',
+			'[ A ]',
+			'[B]',
+			'PHP 8.4',
+			'[A] extra',
+			'[A] [B]',
+			'[A][ ]',
+			$oversized,
+			'[DEV]',
+			'[dev]',
+			'[日本語]',
+			'[😇]',
+		];
+		$actual = $this->tag_names();
+		sort($expected);
+		sort($actual);
+		self::assertSame($expected, $actual);
+		self::assertSame(1, (int) $this->field("SELECT prefix_id FROM phpbb_topic_prefixes WHERE prefix_tag = '[CDB]'", 'prefix_id'));
+		self::assertSame(3, (int) $this->field("SELECT prefix_id FROM phpbb_topic_prefixes WHERE prefix_tag = 'PHP 8.4'", 'prefix_id'));
+		self::assertSame(4, (int) $this->field("SELECT prefix_id FROM phpbb_topic_prefixes WHERE prefix_tag = '[A] extra'", 'prefix_id'));
+	}
+
+	public function test_combined_prefix_relationships_cross_batch_boundary()
+	{
+		$this->reset_legacy_data([['[A][B]', 1, 2]]);
+		$topics = [];
+		$posts = [];
+		for ($offset = 0; $offset < 501; $offset++)
+		{
+			$topic_id = 1000 + $offset;
+			$post_id = 2000 + $offset;
+			$subject = '[A][B] Topic ' . $offset;
+			$topics[] = [
+				'topic_id' => $topic_id,
+				'forum_id' => 2,
+				'topic_title' => $subject,
+				'topic_prefix_id' => 1,
+				'topic_first_post_id' => $post_id,
+				'topic_visibility' => ITEM_APPROVED,
+				'topic_type' => POST_NORMAL,
+			];
+			$posts[] = [
+				'post_id' => $post_id,
+				'topic_id' => $topic_id,
+				'forum_id' => 2,
+				'post_subject' => $subject,
+				'post_text' => '',
+			];
+		}
+		$this->db->sql_multi_insert('phpbb_topics', $topics);
+		$this->db->sql_multi_insert('phpbb_posts', $posts);
+
+		$this->create_migration()->migrate_legacy_data();
+
+		self::assertSame(1002, (int) $this->field('SELECT COUNT(*) AS total FROM phpbb_topic_prefixes_topics', 'total'));
+		self::assertSame('Topic 0', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 1000', 'topic_title'));
+		self::assertSame('Topic 500', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 1500', 'topic_title'));
+		self::assertSame(0, (int) $this->field("SELECT COUNT(*) AS total FROM phpbb_topic_prefixes WHERE prefix_tag = '[A][B]'", 'total'));
+	}
+
 	protected function create_migration()
 	{
 		global $phpbb_root_path, $phpEx;
@@ -179,5 +292,88 @@ class legacy_migration_test extends tags_base
 		$value = $this->db->sql_fetchfield($field);
 		$this->db->sql_freeresult($result);
 		return $value;
+	}
+
+	protected function reset_legacy_data(array $definitions, bool $with_topics = false): void
+	{
+		$this->db->sql_query('DELETE FROM phpbb_topic_prefixes_topics');
+		$this->db->sql_query('DELETE FROM phpbb_topic_prefixes_forums');
+		$this->db->sql_query('DELETE FROM phpbb_posts');
+		$this->db->sql_query('DELETE FROM phpbb_topics');
+		$this->db->sql_query('DELETE FROM phpbb_topic_prefixes');
+
+		foreach ($definitions as $offset => $definition)
+		{
+			$prefix_id = $offset + 1;
+			$this->db->sql_query('INSERT INTO phpbb_topic_prefixes ' . $this->db->sql_build_array('INSERT', [
+				'prefix_id' => $prefix_id,
+				'prefix_tag' => utf8_encode_ucr($definition[0]),
+				'prefix_enabled' => $definition[1],
+				'prefix_parent_id' => 0,
+				'prefix_left_id' => $prefix_id * 2 - 1,
+				'prefix_right_id' => $prefix_id * 2,
+				'prefix_parents' => '',
+				'forum_id' => $definition[2],
+				'prefix_color' => '4A76A8',
+				'prefix_order' => 0,
+			]));
+
+			if (!$with_topics)
+			{
+				continue;
+			}
+
+			$topic_id = 100 + $offset;
+			$post_id = 1000 + $offset;
+			$subject = $definition[0] . ' Topic ' . ($offset + 1);
+			$this->db->sql_query('INSERT INTO phpbb_posts ' . $this->db->sql_build_array('INSERT', [
+				'post_id' => $post_id,
+				'topic_id' => $topic_id,
+				'forum_id' => $definition[2],
+				'post_subject' => $subject,
+				'post_text' => '',
+			]));
+			$this->db->sql_query('INSERT INTO phpbb_topics ' . $this->db->sql_build_array('INSERT', [
+				'topic_id' => $topic_id,
+				'forum_id' => $definition[2],
+				'topic_title' => $subject,
+				'topic_prefix_id' => $prefix_id,
+				'topic_first_post_id' => $post_id,
+				'topic_visibility' => ITEM_APPROVED,
+				'topic_type' => POST_NORMAL,
+			]));
+		}
+	}
+
+	protected function tag_names(): array
+	{
+		$result = $this->db->sql_query('SELECT prefix_tag
+			FROM phpbb_topic_prefixes
+			ORDER BY prefix_order ASC, prefix_id ASC');
+		$names = [];
+		while ($row = $this->db->sql_fetchrow($result))
+		{
+			$names[] = \phpbb\topicprefixes\tags\manager::decode_name($row['prefix_tag']);
+		}
+		$this->db->sql_freeresult($result);
+
+		return $names;
+	}
+
+	protected function topic_tag_names(int $topic_id): array
+	{
+		$result = $this->db->sql_query('SELECT p.prefix_tag
+			FROM phpbb_topic_prefixes_topics pt
+			INNER JOIN phpbb_topic_prefixes p ON p.prefix_id = pt.prefix_id
+			WHERE pt.topic_id = ' . (int) $topic_id . '
+			ORDER BY p.prefix_order ASC, p.prefix_id ASC');
+		$names = [];
+		while ($row = $this->db->sql_fetchrow($result))
+		{
+			$names[] = \phpbb\topicprefixes\tags\manager::decode_name($row['prefix_tag']);
+		}
+		$this->db->sql_freeresult($result);
+
+		return $names;
 	}
 }
