@@ -26,4 +26,8 @@ $lang = array_merge($lang, [
 	'ACP_LOG_TAG_DELETED' => '<strong>Deleted topic tag</strong><br>» %s',
 	'ACP_LOG_TAG_REPAIRED' => '<strong>Repaired topic tag</strong><br>» %1$s into %2$s',
 	'TOPIC_PREFIXES_UPGRADE_BOARD_ENABLED' => 'Topic Prefixes 2.0 must migrate your legacy prefix data. Before enabling it, back up your database and disable your board under General, Board settings. Then try enabling the extension again.',
+
+	// Keeping to maintain translation of legacy log entries
+	'ACP_LOG_PREFIX_ADDED' => '<strong>Created new topic prefix</strong><br>» %1$s in forum: %2$s',
+	'ACP_LOG_PREFIX_DELETED' => '<strong>Deleted topic prefix</strong><br>» %1$s in forum: %2$s',
 ]);
