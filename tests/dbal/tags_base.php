@@ -56,4 +56,40 @@ abstract class tags_base extends \phpbb_database_test_case
 			'phpbb_topics'
 		);
 	}
+
+	/**
+	 * Insert rows containing explicit auto-increment identifiers.
+	 *
+	 * SQL Server requires IDENTITY_INSERT around fixture rows that name an
+	 * identity column. Other test databases accept the rows directly.
+	 *
+	 * @param string $table Table name
+	 * @param array  $rows  Rows to insert
+	 * @return void
+	 */
+	protected function insert_explicit_rows(string $table, array $rows): void
+	{
+		if (!$rows)
+		{
+			return;
+		}
+
+		$mssql = strpos($this->db->get_sql_layer(), 'mssql') === 0;
+		if ($mssql)
+		{
+			$this->db->sql_query('SET IDENTITY_INSERT ' . $table . ' ON');
+		}
+
+		try
+		{
+			$this->db->sql_multi_insert($table, $rows);
+		}
+		finally
+		{
+			if ($mssql)
+			{
+				$this->db->sql_query('SET IDENTITY_INSERT ' . $table . ' OFF');
+			}
+		}
+	}
 }

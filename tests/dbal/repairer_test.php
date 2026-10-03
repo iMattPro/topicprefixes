@@ -23,8 +23,13 @@ class repairer_test extends tags_base
 				topic_last_post_subject = '(A)(B) Topic'
 			WHERE topic_id = 10");
 		$this->db->sql_query("UPDATE phpbb_topics SET topic_title = '(A)(B)Different' WHERE topic_id = 11");
-		$this->db->sql_query("INSERT INTO phpbb_posts (post_id, topic_id, forum_id, post_subject, post_text)
-			VALUES (100, 10, 2, '(A)(B) Topic', '')");
+		$this->insert_explicit_rows('phpbb_posts', [[
+			'post_id' => 100,
+			'topic_id' => 10,
+			'forum_id' => 2,
+			'post_subject' => '(A)(B) Topic',
+			'post_text' => '',
+		]]);
 		$this->db->sql_query("UPDATE phpbb_forums
 			SET forum_last_post_id = 100, forum_last_post_subject = '(A)(B) Topic'
 			WHERE forum_id = 2");
@@ -82,9 +87,11 @@ class repairer_test extends tags_base
 
 		$result = $this->create_repairer()->repair(3, ['DEV', 'dev', '😇']);
 		self::assertSame(['DEV', 'dev', '😇'], array_column($result['targets'], 'prefix_tag'));
-		self::assertSame(1, $this->count_rows('phpbb_topic_prefixes', "prefix_tag = 'DEV'"));
-		self::assertSame(1, $this->count_rows('phpbb_topic_prefixes', "prefix_tag = 'dev'"));
-		self::assertSame(1, $this->count_rows('phpbb_topic_prefixes', "prefix_tag = '&#128519;'"));
+		self::assertCount(3, array_unique(array_column($result['targets'], 'prefix_id')));
+		$name_counts = array_count_values(array_column($this->create_tag_manager()->get_tags(), 'prefix_tag'));
+		self::assertSame(1, $name_counts['DEV']);
+		self::assertSame(1, $name_counts['dev']);
+		self::assertSame(1, $name_counts['😇']);
 	}
 
 	public function test_unicode_source_cannot_target_equivalent_display_name(): void
@@ -114,7 +121,7 @@ class repairer_test extends tags_base
 			];
 			$assignments[] = ['topic_id' => $topic_id, 'prefix_id' => 1];
 		}
-		$this->db->sql_multi_insert('phpbb_topics', $topics);
+		$this->insert_explicit_rows('phpbb_topics', $topics);
 		$this->db->sql_multi_insert('phpbb_topic_prefixes_topics', $assignments);
 
 		$result = $this->create_repairer()->repair(1, ['Defect']);

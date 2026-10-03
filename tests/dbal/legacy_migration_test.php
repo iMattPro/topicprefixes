@@ -262,8 +262,8 @@ class legacy_migration_test extends tags_base
 				'post_text' => '',
 			];
 		}
-		$this->db->sql_multi_insert('phpbb_topics', $topics);
-		$this->db->sql_multi_insert('phpbb_posts', $posts);
+		$this->insert_explicit_rows('phpbb_topics', $topics);
+		$this->insert_explicit_rows('phpbb_posts', $posts);
 
 		$this->create_migration()->migrate_legacy_data();
 
@@ -305,7 +305,7 @@ class legacy_migration_test extends tags_base
 		foreach ($definitions as $offset => $definition)
 		{
 			$prefix_id = $offset + 1;
-			$this->db->sql_query('INSERT INTO phpbb_topic_prefixes ' . $this->db->sql_build_array('INSERT', [
+			$this->insert_explicit_rows('phpbb_topic_prefixes', [[
 				'prefix_id' => $prefix_id,
 				'prefix_tag' => utf8_encode_ucr($definition[0]),
 				'prefix_enabled' => $definition[1],
@@ -316,7 +316,7 @@ class legacy_migration_test extends tags_base
 				'forum_id' => $definition[2],
 				'prefix_color' => '4A76A8',
 				'prefix_order' => 0,
-			]));
+			]]);
 
 			if (!$with_topics)
 			{
@@ -326,14 +326,14 @@ class legacy_migration_test extends tags_base
 			$topic_id = 100 + $offset;
 			$post_id = 1000 + $offset;
 			$subject = $definition[0] . ' Topic ' . ($offset + 1);
-			$this->db->sql_query('INSERT INTO phpbb_posts ' . $this->db->sql_build_array('INSERT', [
+			$this->insert_explicit_rows('phpbb_posts', [[
 				'post_id' => $post_id,
 				'topic_id' => $topic_id,
 				'forum_id' => $definition[2],
 				'post_subject' => $subject,
 				'post_text' => '',
-			]));
-			$this->db->sql_query('INSERT INTO phpbb_topics ' . $this->db->sql_build_array('INSERT', [
+			]]);
+			$this->insert_explicit_rows('phpbb_topics', [[
 				'topic_id' => $topic_id,
 				'forum_id' => $definition[2],
 				'topic_title' => $subject,
@@ -341,7 +341,13 @@ class legacy_migration_test extends tags_base
 				'topic_first_post_id' => $post_id,
 				'topic_visibility' => ITEM_APPROVED,
 				'topic_type' => POST_NORMAL,
-			]));
+			]]);
+		}
+
+		if ($this->db->get_sql_layer() === 'postgres')
+		{
+			$this->db->sql_query("SELECT SETVAL('phpbb_topic_prefixes_seq',
+				(SELECT COALESCE(MAX(prefix_id), 0) + 1 FROM phpbb_topic_prefixes), false)");
 		}
 	}
 
