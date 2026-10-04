@@ -196,6 +196,14 @@ class viewforum_listener implements EventSubscriberInterface
 	 */
 	public function load_topic_tags($event): void
 	{
+		if ($this->selected_ids)
+		{
+			$this->template->assign_var(
+				'BASE_URL',
+				$this->renderer->filter_url($this->forum_id, $this->selected_ids, $this->sort_params)
+			);
+		}
+
 		$topic_ids = [];
 		$this->tag_topic_ids = [];
 		foreach ($event['rowset'] as $row)

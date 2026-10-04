@@ -53,8 +53,22 @@ class viewforum_listener_test extends \phpbb_test_case
 		$filter->expects(self::once())->method('count_topics')->with(2, array(1, 2), 0)->willReturn(7);
 		$filter->method('condition')->willReturn('FILTER_CONDITION');
 		$template->expects(self::once())->method('assign_vars');
+		$template->expects(self::exactly(2))->method('assign_var')->with(
+			'BASE_URL',
+			'./viewforum.php?f=2&amp;st=0&amp;sk=t&amp;sd=d&amp;tags=1%2C2'
+		);
 		$renderer->method('render')->willReturn(array());
-		$renderer->method('filter_url')->willReturn('./viewforum.php?f=2');
+		$renderer->expects(self::exactly(4))->method('filter_url')->withConsecutive(
+			[2, [], array('st' => 0, 'sk' => 't', 'sd' => 'd')],
+			[2, array(1, 2)],
+			[2, array(1, 2), array('st' => 0, 'sk' => 't', 'sd' => 'd')],
+			[2, array(1, 2), array('st' => 0, 'sk' => 't', 'sd' => 'd')]
+		)->willReturnOnConsecutiveCalls(
+			'./viewforum.php?f=2',
+			'./viewforum.php?f=2&amp;tags=1%2C2',
+			'./viewforum.php?f=2&amp;st=0&amp;sk=t&amp;sd=d&amp;tags=1%2C2',
+			'./viewforum.php?f=2&amp;st=0&amp;sk=t&amp;sd=d&amp;tags=1%2C2'
+		);
 		$listener = new \phpbb\topicprefixes\event\viewforum_listener(
 			$manager, $assignments, $filter, $renderer, $request, $template, $language
 		);
