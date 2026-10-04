@@ -39,7 +39,7 @@ class repair_legacy_tags_test extends \phpbb_test_case
 			$arguments = func_get_args();
 			array_shift($arguments);
 			$messages = [
-				'CLI_TOPIC_PREFIXES_REPAIR_ACTION_REPAIR' => 'split or replace',
+				'CLI_TOPIC_PREFIXES_REPAIR_ACTION_SPLIT' => 'split',
 				'CLI_TOPIC_PREFIXES_REPAIR_ACTION_SKIP' => 'skip',
 				'CLI_TOPIC_PREFIXES_REPAIR_ACTION_QUIT' => 'quit',
 			];
@@ -235,7 +235,7 @@ class repair_legacy_tags_test extends \phpbb_test_case
 		$this->repairer->expects(self::never())->method('repair');
 
 		$tester = $this->create_tester(true);
-		$tester->setInputs(['yes', 'split or replace', '']);
+		$tester->setInputs(['yes', 'split', '']);
 		self::assertSame(0, $tester->execute([], ['interactive' => true]));
 		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_SKIPPED', $tester->getDisplay());
 	}
@@ -249,7 +249,7 @@ class repair_legacy_tags_test extends \phpbb_test_case
 		$this->repairer->expects(self::never())->method('repair');
 
 		$tester = $this->create_tester(true);
-		$tester->setInputs(['yes', 'split or replace', str_repeat('x', 51), '(A)(B)', 'A', 'A', 'B', '', 'no']);
+		$tester->setInputs(['yes', 'split', str_repeat('x', 51), '(A)(B)', 'A', 'A', 'B', '', 'no']);
 		self::assertSame(0, $tester->execute([], ['interactive' => true]));
 		$display = $tester->getDisplay();
 		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_INVALID_TAG', $display);
@@ -263,13 +263,13 @@ class repair_legacy_tags_test extends \phpbb_test_case
 		$source = $this->source_tag();
 		$this->tag_manager->method('get_tags')->willReturn([1 => $source]);
 		$this->repairer->method('inspect')->willReturn($this->inspection($source));
-		$this->repairer->method('preview')->willThrowException(new \InvalidArgumentException('Invalid replacements.'));
+		$this->repairer->method('preview')->willThrowException(new \InvalidArgumentException('CLI_TOPIC_PREFIXES_REPAIR_INVALID_TAG'));
 		$this->repairer->expects(self::never())->method('repair');
 
 		$tester = $this->create_tester(true);
-		$tester->setInputs(['yes', 'split or replace', 'A', '']);
+		$tester->setInputs(['yes', 'split', 'A', '']);
 		self::assertSame(0, $tester->execute([], ['interactive' => true]));
-		self::assertStringContainsString('Invalid replacements.', $tester->getDisplay());
+		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_INVALID_TAG', $tester->getDisplay());
 	}
 
 	public function test_board_reenabled_before_apply_aborts(): void
@@ -284,7 +284,7 @@ class repair_legacy_tags_test extends \phpbb_test_case
 		$this->repairer->expects(self::never())->method('repair');
 
 		$tester = $this->create_tester(true);
-		$tester->setInputs(['yes', 'split or replace', 'A', 'B', '', 'yes']);
+		$tester->setInputs(['yes', 'split', 'A', 'B', '', 'yes']);
 		self::assertSame(1, $tester->execute([], ['interactive' => true]));
 		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_BOARD_ENABLED', $tester->getDisplay());
 	}
@@ -298,7 +298,7 @@ class repair_legacy_tags_test extends \phpbb_test_case
 		$this->repairer->method('repair')->willThrowException(new \RuntimeException('Database failure.'));
 
 		$tester = $this->create_tester(true);
-		$tester->setInputs(['yes', 'split or replace', 'A', 'B', '', 'yes']);
+		$tester->setInputs(['yes', 'split', 'A', 'B', '', 'yes']);
 		self::assertSame(1, $tester->execute([], ['interactive' => true]));
 		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_FAILED', $tester->getDisplay());
 	}

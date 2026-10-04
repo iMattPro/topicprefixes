@@ -14,7 +14,7 @@ use phpbb\cache\driver\driver_interface as cache;
 use phpbb\db\driver\driver_interface;
 
 /**
- * Safely replace one combined tag with one or more administrator-supplied tags.
+ * Safely split one combined tag into administrator-supplied separate tags.
  */
 class repairer
 {
@@ -186,7 +186,7 @@ class repairer
 		$this->db->sql_freeresult($result);
 		if (!$source)
 		{
-			throw new \InvalidArgumentException('Source tag does not exist.');
+			throw new \InvalidArgumentException('CLI_TOPIC_PREFIXES_REPAIR_TAG_NOT_FOUND');
 		}
 
 		$source['prefix_id'] = (int) $source['prefix_id'];
@@ -207,7 +207,7 @@ class repairer
 	{
 		if (!$replacements)
 		{
-			throw new \InvalidArgumentException('Enter at least one replacement tag.');
+			throw new \InvalidArgumentException('CLI_TOPIC_PREFIXES_REPAIR_NEW_TAG_REQUIRED');
 		}
 
 		$result = $this->db->sql_query('SELECT prefix_id, prefix_tag, prefix_enabled FROM ' . $this->tags_table);
@@ -232,18 +232,18 @@ class repairer
 			$stored_name = manager::normalize_name((string) $replacement);
 			if ($stored_name === '')
 			{
-				throw new \InvalidArgumentException('Replacement tag is empty or too long.');
+				throw new \InvalidArgumentException('CLI_TOPIC_PREFIXES_REPAIR_INVALID_TAG');
 			}
 
 			$name = manager::decode_name($stored_name);
 			$key = base64_encode($name);
 			if ($name === $source['prefix_tag'])
 			{
-				throw new \InvalidArgumentException('Replacement tag cannot equal the source tag.');
+				throw new \InvalidArgumentException('CLI_TOPIC_PREFIXES_REPAIR_SOURCE_TARGET');
 			}
 			if (isset($seen[$key]))
 			{
-				throw new \InvalidArgumentException('Replacement tags must be unique.');
+				throw new \InvalidArgumentException('CLI_TOPIC_PREFIXES_REPAIR_DUPLICATE_TAG');
 			}
 			$seen[$key] = true;
 

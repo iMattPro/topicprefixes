@@ -131,7 +131,7 @@ class repair_legacy_tags extends command
 			));
 
 			$choices = [
-				$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_ACTION_REPAIR'),
+				$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_ACTION_SPLIT'),
 				$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_ACTION_SKIP'),
 				$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_ACTION_QUIT'),
 			];
@@ -159,7 +159,7 @@ class repair_legacy_tags extends command
 			}
 			catch (\InvalidArgumentException $e)
 			{
-				$io->error($e->getMessage());
+				$io->error($this->language->lang($e->getMessage()));
 				$skipped++;
 				continue;
 			}

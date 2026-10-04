@@ -9,7 +9,7 @@
 - Added clickable forum filters that can combine multiple tags using AND matching.
 - Preserved tags through topic moves, splits, forks, and merges, including tags retained after moving into forums where they are unavailable for new assignments.
 - Added a safe, restartable upgrade that converts legacy prefixes and assignments into tags while removing matching prefix text from topic titles and first-post subjects.
-- Added an interactive legacy tag repair CLI for splitting or replacing combined tags that could not be identified automatically.
+- Added an interactive CLI for splitting combined tags into multiple separate tags when they could not be split automatically.
 - Raised minimum requirements to phpBB 3.3.0 and PHP 7.2.
 - Note: implementations for showing tags on UCP main page, bookmarks, and subscriptions will take effect after phpBB adds new proposed events (targeted for 3.3.19).
 

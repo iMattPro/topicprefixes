@@ -21,6 +21,7 @@ if (empty($lang) || !is_array($lang))
 $lang = array_merge($lang, [
 	'TOPIC_TAGS' => 'Topic tags',
 	'TOPIC_TAGS_EXPLAIN' => 'Create administrator-curated topic tags, set their display order, and choose where each tag is available.',
+	'TOPIC_TAGS_REPAIR_CLI' => 'Need to split tags into multiple separate tags? Try the CLI tool from your board root:',
 	'TOPIC_TAG' => 'Tag',
 	'TOPIC_TAG_TEXT' => 'Tag text',
 	'TOPIC_TAG_COLOR' => 'Badge color',

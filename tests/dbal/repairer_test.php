@@ -27,7 +27,7 @@ class repairer_test extends tags_base
 	public function test_inspect_rejects_missing_source(): void
 	{
 		$this->expectException(\InvalidArgumentException::class);
-		$this->expectExceptionMessage('Source tag does not exist.');
+		$this->expectExceptionMessage('CLI_TOPIC_PREFIXES_REPAIR_TAG_NOT_FOUND');
 
 		$this->create_repairer()->inspect(999);
 	}
@@ -129,7 +129,7 @@ class repairer_test extends tags_base
 	{
 		$this->db->sql_query("UPDATE phpbb_topic_prefixes SET prefix_tag = '&#128519;' WHERE prefix_id = 3");
 		$this->expectException(\InvalidArgumentException::class);
-		$this->expectExceptionMessage('Replacement tag cannot equal the source tag.');
+		$this->expectExceptionMessage('CLI_TOPIC_PREFIXES_REPAIR_SOURCE_TARGET');
 
 		$this->create_repairer()->preview(3, ['😇']);
 	}
@@ -187,11 +187,11 @@ class repairer_test extends tags_base
 	public function invalid_replacement_provider(): array
 	{
 		return [
-			'none' => [[], 'Enter at least one replacement tag.'],
-			'empty' => [[''], 'Replacement tag is empty or too long.'],
-			'too long' => [[str_repeat('x', 51)], 'Replacement tag is empty or too long.'],
-			'source' => [['Bug'], 'Replacement tag cannot equal the source tag.'],
-			'duplicate' => [['A', 'A'], 'Replacement tags must be unique.'],
+			'none' => [[], 'CLI_TOPIC_PREFIXES_REPAIR_NEW_TAG_REQUIRED'],
+			'empty' => [[''], 'CLI_TOPIC_PREFIXES_REPAIR_INVALID_TAG'],
+			'too long' => [[str_repeat('x', 51)], 'CLI_TOPIC_PREFIXES_REPAIR_INVALID_TAG'],
+			'source' => [['Bug'], 'CLI_TOPIC_PREFIXES_REPAIR_SOURCE_TARGET'],
+			'duplicate' => [['A', 'A'], 'CLI_TOPIC_PREFIXES_REPAIR_DUPLICATE_TAG'],
 		];
 	}
 

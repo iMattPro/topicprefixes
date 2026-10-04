@@ -15,19 +15,19 @@ The phpBB Topic Tags extension provides administrator-curated topic tags. Tags a
 - Upgrade existing title prefixes safely into relational tag assignments.
 - This is the same extension currently in use at phpbb.com in the Extensions and Styles in development forums.
 
-## Repairing combined legacy tags
+## Splitting combined legacy tags
 
-After upgrading from Topic Prefixes 1.x, use the interactive repair command for
-combined prefixes that could not be split automatically, such as `(A)(B)` or
-`A|B`:
+After upgrading from Topic Prefixes 1.x, use the interactive command to split
+one combined tag into multiple separate tags. This handles formats that could
+not be split automatically, such as `(A)(B)` or `A|B`:
 
 ```shell
 php bin/phpbbcli.php topicprefixes:repair-legacy-tags
 ```
 
-Use `--tag-id=ID` to repair one tag. Back up the database and disable the board
+Use `--tag-id=ID` to split one tag. Back up the database and disable the board
 before running the command; the command enforces both an interactive backup
-confirmation and maintenance mode. Every proposed repair is previewed and must
+confirmation and maintenance mode. Every proposed split is previewed and must
 be confirmed before any data changes.
 
 📦 [Download](https://www.phpbb.com/customise/db/extension/topicprefixes/) the latest release of this extension.
