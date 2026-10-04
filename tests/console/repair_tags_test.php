@@ -26,6 +26,9 @@ class repair_tags_test extends \phpbb_test_case
 	/** @var \PHPUnit\Framework\MockObject\MockObject|\phpbb\log\log_interface */
 	protected $log;
 
+	/** @var \phpbb\config\config */
+	protected $config;
+
 	protected function setUp(): void
 	{
 		parent::setUp();
@@ -197,14 +200,148 @@ class repair_tags_test extends \phpbb_test_case
 		self::assertSame(0, $tester->execute([], ['interactive' => true]));
 	}
 
+	public function test_invalid_targeted_tag_is_rejected(): void
+	{
+		$this->tag_manager->method('get_tags')->willReturn([1 => $this->source_tag()]);
+		$this->repairer->expects(self::never())->method('inspect');
+
+		$tester = $this->create_tester(true);
+		$tester->setInputs(['yes']);
+		self::assertSame(1, $tester->execute(['--tag-id' => 999], ['interactive' => true]));
+		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_TAG_NOT_FOUND', $tester->getDisplay());
+	}
+
+	public function test_empty_catalog_exits_cleanly(): void
+	{
+		$this->tag_manager->method('get_tags')->willReturn([]);
+
+		$tester = $this->create_tester(true);
+		$tester->setInputs(['yes']);
+		self::assertSame(0, $tester->execute([], ['interactive' => true]));
+		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_NO_TAGS', $tester->getDisplay());
+	}
+
+	public function test_empty_replacement_list_skips_tag(): void
+	{
+		$source = $this->source_tag();
+		$this->tag_manager->method('get_tags')->willReturn([1 => $source]);
+		$this->repairer->method('inspect')->willReturn($this->inspection($source));
+		$this->repairer->expects(self::never())->method('preview');
+		$this->repairer->expects(self::never())->method('repair');
+
+		$tester = $this->create_tester(true);
+		$tester->setInputs(['yes', 'repair', '']);
+		self::assertSame(0, $tester->execute([], ['interactive' => true]));
+		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_SKIPPED', $tester->getDisplay());
+	}
+
+	public function test_replacement_prompt_rejects_invalid_source_and_duplicate_then_declines(): void
+	{
+		$source = $this->source_tag();
+		$this->tag_manager->method('get_tags')->willReturn([1 => $source]);
+		$this->repairer->method('inspect')->willReturn($this->inspection($source));
+		$this->repairer->expects(self::once())->method('preview')->with(1, ['A', 'B'])->willReturn($this->preview($source));
+		$this->repairer->expects(self::never())->method('repair');
+
+		$tester = $this->create_tester(true);
+		$tester->setInputs(['yes', 'repair', str_repeat('x', 51), '(A)(B)', 'A', 'A', 'B', '', 'no']);
+		self::assertSame(0, $tester->execute([], ['interactive' => true]));
+		$display = $tester->getDisplay();
+		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_INVALID_TAG', $display);
+		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_SOURCE_TARGET', $display);
+		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_DUPLICATE_TAG', $display);
+		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_SKIPPED', $display);
+	}
+
+	public function test_preview_validation_failure_skips_tag(): void
+	{
+		$source = $this->source_tag();
+		$this->tag_manager->method('get_tags')->willReturn([1 => $source]);
+		$this->repairer->method('inspect')->willReturn($this->inspection($source));
+		$this->repairer->method('preview')->willThrowException(new \InvalidArgumentException('Invalid replacements.'));
+		$this->repairer->expects(self::never())->method('repair');
+
+		$tester = $this->create_tester(true);
+		$tester->setInputs(['yes', 'repair', 'A', '']);
+		self::assertSame(0, $tester->execute([], ['interactive' => true]));
+		self::assertStringContainsString('Invalid replacements.', $tester->getDisplay());
+	}
+
+	public function test_board_reenabled_before_apply_aborts(): void
+	{
+		$source = $this->source_tag();
+		$this->tag_manager->method('get_tags')->willReturn([1 => $source]);
+		$this->repairer->method('inspect')->willReturn($this->inspection($source));
+		$this->repairer->method('preview')->willReturnCallback(function () use ($source) {
+			$this->config['board_disable'] = 0;
+			return $this->preview($source);
+		});
+		$this->repairer->expects(self::never())->method('repair');
+
+		$tester = $this->create_tester(true);
+		$tester->setInputs(['yes', 'repair', 'A', 'B', '', 'yes']);
+		self::assertSame(1, $tester->execute([], ['interactive' => true]));
+		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_BOARD_ENABLED', $tester->getDisplay());
+	}
+
+	public function test_repair_failure_aborts(): void
+	{
+		$source = $this->source_tag();
+		$this->tag_manager->method('get_tags')->willReturn([1 => $source]);
+		$this->repairer->method('inspect')->willReturn($this->inspection($source));
+		$this->repairer->method('preview')->willReturn($this->preview($source));
+		$this->repairer->method('repair')->willThrowException(new \RuntimeException('Database failure.'));
+
+		$tester = $this->create_tester(true);
+		$tester->setInputs(['yes', 'repair', 'A', 'B', '', 'yes']);
+		self::assertSame(1, $tester->execute([], ['interactive' => true]));
+		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_FAILED', $tester->getDisplay());
+	}
+
+	protected function source_tag(): array
+	{
+		return [
+			'prefix_id' => 1,
+			'prefix_tag' => '(A)(B)',
+			'prefix_enabled' => 1,
+			'prefix_color' => '4A76A8',
+			'prefix_order' => 1,
+		];
+	}
+
+	protected function inspection(array $source): array
+	{
+		return ['source' => $source, 'forum_count' => 1, 'topic_count' => 2];
+	}
+
+	protected function preview(array $source): array
+	{
+		return [
+			'source' => $source,
+			'targets' => [
+				['prefix_id' => null, 'prefix_tag' => 'A', 'existing' => false],
+				['prefix_id' => 2, 'prefix_tag' => 'B', 'existing' => true],
+			],
+			'forum_count' => 1,
+			'topic_count' => 2,
+			'cleanup' => [
+				'topic_title' => 0,
+				'post_subject' => 0,
+				'topic_last_post_subject' => 0,
+				'forum_last_post_subject' => 0,
+			],
+		];
+	}
+
 	protected function create_tester(bool $board_disabled): CommandTester
 	{
 		$user = $this->getMockBuilder('\phpbb\user')
 			->disableOriginalConstructor()
 			->getMock();
+		$this->config = new \phpbb\config\config(['board_disable' => $board_disabled]);
 		$command = new \phpbb\topicprefixes\console\command\repair_tags(
 			$user,
-			new \phpbb\config\config(['board_disable' => $board_disabled]),
+			$this->config,
 			$this->language,
 			$this->tag_manager,
 			$this->repairer,

@@ -31,7 +31,7 @@ class ext extends \phpbb\extension\base
 	 */
 	public function is_enableable()
 	{
-		if (PHP_VERSION_ID < 70200 || !phpbb_version_compare(PHPBB_VERSION, '3.3.5', '>='))
+		if (!$this->meets_requirements())
 		{
 			return false;
 		}
@@ -46,6 +46,14 @@ class ext extends \phpbb\extension\base
 		$language->add_lang('info_acp_topic_prefixes', $this->extension_name);
 
 		return $language->lang('TOPIC_PREFIXES_UPGRADE_BOARD_ENABLED');
+	}
+
+	/**
+	 * Check runtime requirements separately so unsupported environments can be tested.
+	 */
+	protected function meets_requirements(): bool
+	{
+		return PHP_VERSION_ID >= 70200 && phpbb_version_compare(PHPBB_VERSION, '3.3.5', '>=');
 	}
 
 	/**

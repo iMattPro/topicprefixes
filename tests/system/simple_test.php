@@ -89,6 +89,34 @@ class simple_test extends \phpbb_test_case
 		self::assertSame($message, $this->create_extension()->is_enableable());
 	}
 
+	public function test_legacy_upgrade_without_extension_state_requires_disabled_board()
+	{
+		$message = 'Back up database and disable board.';
+		$this->configure_container(true, false);
+		$this->language->expects(self::once())
+			->method('add_lang')
+			->with('info_acp_topic_prefixes', 'phpbb/topicprefixes');
+		$this->language->expects(self::once())
+			->method('lang')
+			->with('TOPIC_PREFIXES_UPGRADE_BOARD_ENABLED')
+			->willReturn($message);
+
+		self::assertSame($message, $this->create_extension()->is_enableable());
+	}
+
+	public function test_unsupported_runtime_is_not_enableable(): void
+	{
+		$extension = new unsupported_runtime_ext(
+			$this->container,
+			$this->extension_finder,
+			$this->migrator,
+			'phpbb/topicprefixes',
+			''
+		);
+
+		self::assertFalse($extension->is_enableable());
+	}
+
 	public function test_legacy_upgrade_allows_disabled_board()
 	{
 		$this->configure_container(true, true, serialize(false));
@@ -157,5 +185,13 @@ class simple_test extends \phpbb_test_case
 			'phpbb/topicprefixes',
 			''
 		);
+	}
+}
+
+class unsupported_runtime_ext extends \phpbb\topicprefixes\ext
+{
+	protected function meets_requirements(): bool
+	{
+		return false;
 	}
 }

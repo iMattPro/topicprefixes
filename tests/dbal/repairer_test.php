@@ -14,6 +14,35 @@ require_once __DIR__ . '/tags_base.php';
 
 class repairer_test extends tags_base
 {
+	public function test_inspect_returns_source_and_relationship_counts(): void
+	{
+		$result = $this->create_repairer()->inspect(1);
+
+		self::assertSame(1, $result['source']['prefix_id']);
+		self::assertSame('Bug', $result['source']['prefix_tag']);
+		self::assertSame(2, $result['forum_count']);
+		self::assertSame(2, $result['topic_count']);
+	}
+
+	public function test_inspect_rejects_missing_source(): void
+	{
+		$this->expectException(\InvalidArgumentException::class);
+		$this->expectExceptionMessage('Source tag does not exist.');
+
+		$this->create_repairer()->inspect(999);
+	}
+
+	public function test_repair_source_without_forums(): void
+	{
+		$this->db->sql_query('DELETE FROM phpbb_topic_prefixes_forums WHERE prefix_id = 1');
+
+		$result = $this->create_repairer()->repair(1, ['No forums']);
+		$target_id = (int) $result['targets'][0]['prefix_id'];
+
+		self::assertSame(0, $this->count_rows('phpbb_topic_prefixes_forums', 'prefix_id = ' . $target_id));
+		self::assertSame(2, $this->count_rows('phpbb_topic_prefixes_topics', 'prefix_id = ' . $target_id));
+	}
+
 	public function test_split_reuses_tags_deduplicates_relationships_and_cleans_exact_titles(): void
 	{
 		$this->db->sql_query("UPDATE phpbb_topic_prefixes SET prefix_tag = '(A)(B)' WHERE prefix_id = 1");

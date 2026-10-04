@@ -77,6 +77,7 @@ class filter_test extends tags_base
 
 		self::assertSame('1=1', $filter->condition('t', [0, 0]));
 		self::assertSame(2, $filter->count_topics(2, [1], 7));
+		self::assertSame([], $filter->get_visible_tag_ids_for_forum(2, [0, 'invalid']));
 	}
 
 	/**
