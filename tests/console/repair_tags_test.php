@@ -129,6 +129,55 @@ class repair_tags_test extends \phpbb_test_case
 		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_SUMMARY', $tester->getDisplay());
 	}
 
+	public function test_repair_log_escapes_html_and_preserves_unicode(): void
+	{
+		$source = [
+			'prefix_id' => 1,
+			'prefix_tag' => '<Source> 😇',
+			'prefix_enabled' => 1,
+			'prefix_color' => '4A76A8',
+			'prefix_order' => 1,
+		];
+		$preview = [
+			'source' => $source,
+			'targets' => [
+				['prefix_id' => null, 'prefix_tag' => 'A&B', 'existing' => false],
+				['prefix_id' => 2, 'prefix_tag' => '<Target>', 'existing' => true],
+			],
+			'forum_count' => 1,
+			'topic_count' => 2,
+			'cleanup' => [
+				'topic_title' => 1,
+				'post_subject' => 1,
+				'topic_last_post_subject' => 1,
+				'forum_last_post_subject' => 1,
+			],
+		];
+		$result = $preview;
+		$result['targets'][0]['prefix_id'] = 3;
+
+		$this->tag_manager->expects(self::once())->method('get_tags')->willReturn([1 => $source]);
+		$this->repairer->expects(self::once())->method('inspect')->with(1)->willReturn([
+			'source' => $source,
+			'forum_count' => 1,
+			'topic_count' => 2,
+		]);
+		$this->repairer->expects(self::once())->method('preview')->with(1, ['A&B', '<Target>'])->willReturn($preview);
+		$this->repairer->expects(self::once())->method('repair')->with(1, ['A&B', '<Target>'])->willReturn($result);
+		$this->log->expects(self::once())->method('add')->with(
+			'admin',
+			ANONYMOUS,
+			'',
+			'ACP_LOG_TAG_REPAIRED',
+			self::isType('int'),
+			['&lt;Source&gt; &#128519;', 'A&amp;B, &lt;Target&gt;']
+		);
+
+		$tester = $this->create_tester(true);
+		$tester->setInputs(['y', '0', 'A&B', '<Target>', '', 'y']);
+		self::assertSame(0, $tester->execute(['--tag-id' => 1], ['interactive' => true]));
+	}
+
 	public function test_skip_and_quit_do_not_repair(): void
 	{
 		$tags = [

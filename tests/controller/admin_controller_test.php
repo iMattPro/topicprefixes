@@ -188,6 +188,9 @@ class admin_controller_test extends \phpbb_test_case
 			->method('add_tag')
 			->with('R&D <Tag> &amp;', '#4A76A8', 1, array(2))
 			->willReturn(array('prefix_tag' => 'R&D <Tag> &amp;'));
+		$this->log->expects(self::once())->method('add')->with(
+			'admin', 2, '127.0.0.1', 'ACP_LOG_TAG_ADDED', self::isType('int'), array('R&amp;D &lt;Tag&gt; &amp;amp;')
+		);
 
 		$this->controller->save_tag(0);
 

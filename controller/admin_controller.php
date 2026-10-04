@@ -330,7 +330,9 @@ class admin_controller
 	 */
 	protected function log(string $tag, string $message): void
 	{
-		$this->log->add('admin', $this->user->data['user_id'], $this->user->ip, $message, time(), [utf8_encode_ucr($tag)]);
+		$this->log->add('admin', $this->user->data['user_id'], $this->user->ip, $message, time(), [
+			utf8_encode_ucr(utf8_htmlspecialchars($tag)),
+		]);
 	}
 
 	/**

@@ -194,8 +194,8 @@ class repair_tags extends command
 				'ACP_LOG_TAG_REPAIRED',
 				time(),
 				[
-					utf8_encode_ucr($result['source']['prefix_tag']),
-					utf8_encode_ucr(implode(', ', $target_names)),
+					utf8_encode_ucr(utf8_htmlspecialchars($result['source']['prefix_tag'])),
+					utf8_encode_ucr(utf8_htmlspecialchars(implode(', ', $target_names))),
 				]
 			);
 			$io->success($this->language->lang(
