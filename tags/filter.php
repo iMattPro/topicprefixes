@@ -123,6 +123,58 @@ class filter
 	}
 
 	/**
+	 * Resolve displayed topics to tag-bearing topics without exposing private move destinations.
+	 *
+	 * Callers must supply topic IDs already approved for display by phpBB. Normal
+	 * topics therefore map directly; move destinations receive additional forum
+	 * permission and topic visibility checks.
+	 *
+	 * @param array $topic_ids Displayed topic or shadow identifiers
+	 * @return array Effective topic identifiers keyed by displayed topic identifier
+	 */
+	public function get_visible_topic_map(array $topic_ids): array
+	{
+		$topic_ids = array_values(array_unique(array_filter(array_map('intval', $topic_ids))));
+		if (!$topic_ids)
+		{
+			return [];
+		}
+
+		$readable_forums = array_keys($this->auth->acl_getf('f_read', true));
+		$listable_forums = array_keys($this->auth->acl_getf('f_list_topics', true));
+		$destination_forums = array_values(array_intersect($readable_forums, $listable_forums));
+		$destination_condition = '1=0';
+		if ($destination_forums)
+		{
+			$destination_condition = $this->db->sql_in_set('d.forum_id', $destination_forums) . '
+				AND ' . $this->visibility->get_forums_visibility_sql('topic', $destination_forums, 'd.');
+		}
+
+		$sql = 'SELECT t.topic_id, t.topic_moved_id
+			FROM ' . $this->topics_table . ' t
+			LEFT JOIN ' . $this->topics_table . ' d
+				ON d.topic_id = t.topic_moved_id
+			WHERE ' . $this->db->sql_in_set('t.topic_id', $topic_ids) . '
+				AND (
+					t.topic_moved_id = 0
+					OR (t.topic_moved_id <> 0 AND ' . $destination_condition . ')
+				)
+			ORDER BY t.topic_id ASC';
+		$result = $this->db->sql_query($sql);
+		$topic_map = [];
+		while ($row = $this->db->sql_fetchrow($result))
+		{
+			$topic_id = (int) $row['topic_id'];
+			$topic_map[$topic_id] = !empty($row['topic_moved_id'])
+				? (int) $row['topic_moved_id']
+				: $topic_id;
+		}
+		$this->db->sql_freeresult($result);
+
+		return $topic_map;
+	}
+
+	/**
 	 * Build SQL condition requiring every selected tag.
 	 *
 	 * @param string $topic_alias Topics table alias

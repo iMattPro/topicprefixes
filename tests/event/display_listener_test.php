@@ -164,27 +164,74 @@ class display_listener_test extends \phpbb_test_case
 			->disableOriginalConstructor()
 			->getMock();
 		$template = $this->getMockBuilder('\phpbb\template\template')->getMock();
+		$filter = $this->getMockBuilder('\phpbb\topicprefixes\tags\filter')
+			->disableOriginalConstructor()
+			->getMock();
 		$tag = ['prefix_id' => 1, 'prefix_tag' => 'Bug', 'prefix_color' => 'D4351C'];
 		$rendered = [['TAG_ID' => 1, 'TAG_NAME' => 'Bug']];
 
-		$assignments->expects(self::once())
-			->method('get_tags_for_displayed_topics')
+		$filter->expects(self::once())
+			->method('get_visible_topic_map')
 			->with([42, 43])
-			->willReturn([42 => [1 => $tag]]);
+			->willReturn([42 => 99, 43 => 43]);
+		$assignments->expects(self::once())
+			->method('get_tags_for_topics')
+			->with([99, 43])
+			->willReturn([99 => [1 => $tag]]);
 		$renderer->expects(self::once())
 			->method('render')
 			->with([1 => $tag], 2)
 			->willReturn($rendered);
 
-		$listener = $this->listener($assignments, $renderer, $template);
+		$listener = $this->listener($assignments, $renderer, $template, $filter);
 		$listener->load_mcp_tags(new \phpbb\event\data(['topic_list' => [42, 43]]));
 		$event = new \phpbb\event\data([
-			'row' => ['topic_id' => 42, 'forum_id' => 2],
+			'row' => ['topic_id' => 42, 'topic_moved_id' => 99, 'forum_id' => 2],
 			'topic_row' => ['TOPIC_TITLE' => 'Tagged topic'],
 		]);
 		$listener->add_mcp_tags($event);
 
 		self::assertSame($rendered, $event['topic_row']['MCP_TOPIC_TAGS']);
+	}
+
+	/**
+	 * Test MCP move shadows omit tags from unreadable destinations.
+	 */
+	public function test_mcp_shadow_omits_unreadable_destination_tags(): void
+	{
+		$assignments = $this->getMockBuilder('\phpbb\topicprefixes\tags\assignment_manager')
+			->disableOriginalConstructor()
+			->getMock();
+		$filter = $this->getMockBuilder('\phpbb\topicprefixes\tags\filter')
+			->disableOriginalConstructor()
+			->getMock();
+		$renderer = $this->getMockBuilder('\phpbb\topicprefixes\tags\renderer')
+			->disableOriginalConstructor()
+			->getMock();
+		$template = $this->getMockBuilder('\phpbb\template\template')->getMock();
+
+		$filter->expects(self::once())
+			->method('get_visible_topic_map')
+			->with([42])
+			->willReturn([]);
+		$assignments->expects(self::once())
+			->method('get_tags_for_topics')
+			->with([])
+			->willReturn([]);
+		$renderer->expects(self::once())
+			->method('render')
+			->with([], 2)
+			->willReturn([]);
+
+		$listener = $this->listener($assignments, $renderer, $template, $filter);
+		$listener->load_mcp_tags(new \phpbb\event\data(['topic_list' => [42]]));
+		$event = new \phpbb\event\data([
+			'row' => ['topic_id' => 42, 'topic_moved_id' => 99, 'forum_id' => 2],
+			'topic_row' => ['TOPIC_TITLE' => 'Private destination'],
+		]);
+		$listener->add_mcp_tags($event);
+
+		self::assertSame([], $event['topic_row']['MCP_TOPIC_TAGS']);
 	}
 
 	/**
@@ -231,13 +278,16 @@ class display_listener_test extends \phpbb_test_case
 		self::assertSame($rendered, $list_event['template_vars']['TOPIC_TAGS']);
 	}
 
-	protected function listener($assignments, $renderer, $template): \phpbb\topicprefixes\event\display_listener
+	protected function listener($assignments, $renderer, $template, $filter = null): \phpbb\topicprefixes\event\display_listener
 	{
+		$filter = $filter ?: $this->getMockBuilder('\phpbb\topicprefixes\tags\filter')
+			->disableOriginalConstructor()
+			->getMock();
 		$language = $this->getMockBuilder('\phpbb\language\language')->disableOriginalConstructor()->getMock();
 		$language->expects(self::once())
 			->method('add_lang')
 			->with('topic_prefixes', 'phpbb/topicprefixes');
 
-		return new \phpbb\topicprefixes\event\display_listener($assignments, $renderer, $template, $language);
+		return new \phpbb\topicprefixes\event\display_listener($assignments, $filter, $renderer, $template, $language);
 	}
 }

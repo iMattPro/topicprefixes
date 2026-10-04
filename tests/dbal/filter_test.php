@@ -142,6 +142,23 @@ class filter_test extends tags_base
 		self::assertSame([], $this->create_filter([2, 3], [2, 3], false)->get_visible_tag_ids_for_forum(2, [4]));
 	}
 
+	public function test_displayed_shadow_map_requires_visible_readable_destination(): void
+	{
+		$this->db->sql_query('UPDATE phpbb_topics SET forum_id = 3 WHERE topic_id = 12');
+		$this->db->sql_query('UPDATE phpbb_topics SET topic_moved_id = 12 WHERE topic_id = 13');
+
+		self::assertSame([10 => 10], $this->create_filter([2], [2], false)->get_visible_topic_map([10, 13]));
+		self::assertSame([10 => 10], $this->create_filter([2, 3], [2], false)->get_visible_topic_map([10, 13]));
+		self::assertSame([10 => 10, 13 => 12], $this->create_filter([2, 3], [2, 3], false)->get_visible_topic_map([10, 13]));
+
+		$this->db->sql_query('UPDATE phpbb_topics SET topic_visibility = ' . ITEM_UNAPPROVED . ' WHERE topic_id = 12');
+		self::assertSame([10 => 10], $this->create_filter([2, 3], [2, 3], false)->get_visible_topic_map([10, 13]));
+
+		$this->db->sql_query('UPDATE phpbb_topics SET topic_moved_id = 999 WHERE topic_id = 13');
+		self::assertSame([], $this->create_filter([2, 3], [2, 3], true)->get_visible_topic_map([13]));
+		self::assertSame([], $this->create_filter()->get_visible_topic_map([0, 'invalid']));
+	}
+
 	/**
 	 * Query topic identifiers matching tags.
 	 *

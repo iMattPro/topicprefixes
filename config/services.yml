@@ -30,6 +30,7 @@ services:
         class: phpbb\topicprefixes\event\display_listener
         arguments:
             - '@phpbb.topicprefixes.tags.assignment_manager'
+            - '@phpbb.topicprefixes.tags.filter'
             - '@phpbb.topicprefixes.tags.renderer'
             - '@template'
             - '@language'

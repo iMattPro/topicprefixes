@@ -342,48 +342,6 @@ class assignment_manager
 	}
 
 	/**
-	 * Batch-load tags keyed by displayed topic, resolving move shadows in SQL.
-	 *
-	 * @param array $topic_ids Topic or shadow-topic identifiers
-	 * @return array Tags grouped by displayed topic identifier
-	 */
-	public function get_tags_for_displayed_topics(array $topic_ids): array
-	{
-		$topic_ids = $this->normalize_ids($topic_ids);
-		if (!$topic_ids)
-		{
-			return [];
-		}
-
-		$effective_topic_id = $this->db->sql_case(
-			't.topic_moved_id <> 0',
-			't.topic_moved_id',
-			't.topic_id'
-		);
-		$sql = 'SELECT t.topic_id AS display_topic_id, p.*
-			FROM ' . $this->topics_table . ' t
-			INNER JOIN ' . $this->topic_map_table . ' pt
-				ON pt.topic_id = ' . $effective_topic_id . '
-			INNER JOIN ' . $this->tags_table . ' p
-				ON p.prefix_id = pt.prefix_id
-			WHERE ' . $this->db->sql_in_set('t.topic_id', $topic_ids) . '
-			ORDER BY p.prefix_order ASC, p.prefix_id ASC';
-		$result = $this->db->sql_query($sql);
-		$tags = [];
-		while ($row = $this->db->sql_fetchrow($result))
-		{
-			$topic_id = (int) $row['display_topic_id'];
-			$tag_id = (int) $row['prefix_id'];
-			unset($row['display_topic_id']);
-			$row['prefix_tag'] = manager::decode_name($row['prefix_tag']);
-			$tags[$topic_id][$tag_id] = $row;
-		}
-		$this->db->sql_freeresult($result);
-
-		return $tags;
-	}
-
-	/**
 	 * Check whether a topic exists.
 	 *
 	 * @param int $topic_id Topic identifier

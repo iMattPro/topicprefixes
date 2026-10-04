@@ -13,6 +13,7 @@ namespace phpbb\topicprefixes\event;
 use phpbb\language\language;
 use phpbb\template\template;
 use phpbb\topicprefixes\tags\assignment_manager;
+use phpbb\topicprefixes\tags\filter;
 use phpbb\topicprefixes\tags\renderer;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
@@ -23,6 +24,9 @@ class display_listener implements EventSubscriberInterface
 {
 	/** @var assignment_manager Topic/tag assignment manager */
 	protected $assignments;
+
+	/** @var filter Topic visibility filter */
+	protected $filter;
 
 	/** @var renderer Topic tag renderer */
 	protected $renderer;
@@ -42,6 +46,9 @@ class display_listener implements EventSubscriberInterface
 	/** @var array Tags grouped by MCP topic */
 	protected $mcp_tags = [];
 
+	/** @var array Effective tag-bearing topic IDs keyed by displayed MCP topic */
+	protected $mcp_tag_topic_ids = [];
+
 	/** @var array Tags grouped by UCP topic */
 	protected $ucp_tags = [];
 
@@ -49,13 +56,15 @@ class display_listener implements EventSubscriberInterface
 	 * Constructor.
 	 *
 	 * @param assignment_manager $assignments Topic/tag assignment manager
+	 * @param filter             $filter      Topic visibility filter
 	 * @param renderer           $renderer    Topic tag renderer
 	 * @param template           $template    Template object
 	 * @param language           $language    Language object
 	 */
-	public function __construct(assignment_manager $assignments, renderer $renderer, template $template, language $language)
+	public function __construct(assignment_manager $assignments, filter $filter, renderer $renderer, template $template, language $language)
 	{
 		$this->assignments = $assignments;
+		$this->filter = $filter;
 		$this->renderer = $renderer;
 		$this->template = $template;
 		$this->language = $language;
@@ -137,7 +146,8 @@ class display_listener implements EventSubscriberInterface
 	 */
 	public function load_mcp_tags($event): void
 	{
-		$this->mcp_tags = $this->assignments->get_tags_for_displayed_topics($event['topic_list']);
+		$this->mcp_tag_topic_ids = $this->filter->get_visible_topic_map($event['topic_list']);
+		$this->mcp_tags = $this->assignments->get_tags_for_topics(array_values($this->mcp_tag_topic_ids));
 	}
 
 	/**
@@ -150,9 +160,10 @@ class display_listener implements EventSubscriberInterface
 	{
 		$this->load_language();
 		$topic_id = (int) $event['row']['topic_id'];
+		$tag_topic_id = $this->mcp_tag_topic_ids[$topic_id] ?? 0;
 		$topic_row = $event['topic_row'];
 		$topic_row['MCP_TOPIC_TAGS'] = $this->renderer->render(
-			$this->mcp_tags[$topic_id] ?? [],
+			$this->mcp_tags[$tag_topic_id] ?? [],
 			(int) $event['row']['forum_id']
 		);
 		$event['topic_row'] = $topic_row;
