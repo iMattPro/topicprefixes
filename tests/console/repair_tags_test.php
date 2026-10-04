@@ -12,7 +12,7 @@ namespace phpbb\topicprefixes\tests\console;
 
 use Symfony\Component\Console\Tester\CommandTester;
 
-class repair_legacy_tags_test extends \phpbb_test_case
+class repair_tags_test extends \phpbb_test_case
 {
 	/** @var \PHPUnit\Framework\MockObject\MockObject|\phpbb\language\language */
 	protected $language;
@@ -40,8 +40,12 @@ class repair_legacy_tags_test extends \phpbb_test_case
 			array_shift($arguments);
 			$messages = [
 				'CLI_TOPIC_PREFIXES_REPAIR_ACTION_SPLIT' => 'split',
+				'CLI_TOPIC_PREFIXES_REPAIR_ACTION_MERGE' => 'merge',
 				'CLI_TOPIC_PREFIXES_REPAIR_ACTION_SKIP' => 'skip',
 				'CLI_TOPIC_PREFIXES_REPAIR_ACTION_QUIT' => 'quit',
+				'CLI_TOPIC_PREFIXES_REPAIR_MERGE_TARGET_OPTION' => 'Tag #%1$d: %2$s',
+				'CLI_TOPIC_PREFIXES_REPAIR_MERGE_CANCEL' => 'cancel',
+				'CLI_TOPIC_PREFIXES_REPAIR_SUMMARY' => 'Finished: %1$d split, %2$d merged, %3$d skipped.',
 			];
 			$message = $messages[$key] ?? $key;
 			return $arguments ? vsprintf($message, $arguments) : $message;
@@ -62,9 +66,9 @@ class repair_legacy_tags_test extends \phpbb_test_case
 		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_INTERACTIVE_REQUIRED', $tester->getDisplay());
 	}
 
-	public function test_command_name_describes_legacy_scope(): void
+	public function test_command_uses_generic_repair_name(): void
 	{
-		self::assertSame('topicprefixes:repair-legacy-tags', $this->create_command(true)->getName());
+		self::assertSame('topicprefixes:repair-tags', $this->create_command(true)->getName());
 	}
 
 	public function test_command_requires_disabled_board(): void
@@ -125,16 +129,16 @@ class repair_legacy_tags_test extends \phpbb_test_case
 			'admin',
 			ANONYMOUS,
 			'',
-			'ACP_LOG_TAG_REPAIRED',
+			'ACP_LOG_TAG_SPLIT',
 			self::isType('int'),
 			['(A)(B)', 'A, B']
 		);
 
 		$tester = $this->create_tester(true);
-		$tester->setInputs(['y', '0', 'A', 'B', '', 'y']);
+		$tester->setInputs(['y', 'split', 'A', 'B', '', 'y']);
 		self::assertSame(0, $tester->execute(['--tag-id' => 1], ['interactive' => true]));
-		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_SUCCESS', $tester->getDisplay());
-		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_SUMMARY', $tester->getDisplay());
+		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_SPLIT_SUCCESS', $tester->getDisplay());
+		self::assertStringContainsString('Finished: 1 split, 0 merged, 0 skipped.', $tester->getDisplay());
 	}
 
 	public function test_repair_log_escapes_html_and_preserves_unicode(): void
@@ -176,13 +180,88 @@ class repair_legacy_tags_test extends \phpbb_test_case
 			'admin',
 			ANONYMOUS,
 			'',
-			'ACP_LOG_TAG_REPAIRED',
+			'ACP_LOG_TAG_SPLIT',
 			self::isType('int'),
 			['&lt;Source&gt; &#128519;', 'A&amp;B, &lt;Target&gt;']
 		);
 
 		$tester = $this->create_tester(true);
-		$tester->setInputs(['y', '0', 'A&B', '<Target>', '', 'y']);
+		$tester->setInputs(['y', 'split', 'A&B', '<Target>', '', 'y']);
+		self::assertSame(0, $tester->execute(['--tag-id' => 1], ['interactive' => true]));
+	}
+
+	public function test_merge_uses_selected_existing_tag_and_logs_operation(): void
+	{
+		$source = $this->source_tag();
+		$target = [
+			'prefix_id' => 2,
+			'prefix_tag' => 'Target',
+			'prefix_enabled' => 0,
+			'prefix_color' => '123456',
+			'prefix_order' => 2,
+		];
+		$preview = [
+			'source' => $source,
+			'targets' => [$target + ['existing' => true]],
+			'forum_count' => 1,
+			'topic_count' => 2,
+			'cleanup' => [
+				'topic_title' => 0,
+				'post_subject' => 0,
+				'topic_last_post_subject' => 0,
+				'forum_last_post_subject' => 0,
+			],
+		];
+
+		$this->tag_manager->expects(self::once())->method('get_tags')->willReturn([1 => $source, 2 => $target]);
+		$this->repairer->expects(self::once())->method('inspect')->with(1)->willReturn($this->inspection($source));
+		$this->repairer->expects(self::once())->method('preview_merge')->with(1, 2)->willReturn($preview);
+		$this->repairer->expects(self::once())->method('merge')->with(1, 2)->willReturn($preview);
+		$this->repairer->expects(self::never())->method('repair');
+		$this->log->expects(self::once())->method('add')->with(
+			'admin',
+			ANONYMOUS,
+			'',
+			'ACP_LOG_TAG_MERGED',
+			self::isType('int'),
+			['(A)(B)', 'Target']
+		);
+
+		$tester = $this->create_tester(true);
+		$tester->setInputs(['yes', 'merge', 'Tag #2: Target', 'yes']);
+		self::assertSame(0, $tester->execute(['--tag-id' => 1], ['interactive' => true]));
+		$display = $tester->getDisplay();
+		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_MERGE_PREVIEW', $display);
+		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_MERGE_PREVIEW_ENABLE', $display);
+		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_MERGE_SUCCESS', $display);
+		self::assertStringContainsString('Finished: 0 split, 1 merged, 0 skipped.', $display);
+	}
+
+	public function test_merge_without_destination_skips_source(): void
+	{
+		$source = $this->source_tag();
+		$this->tag_manager->method('get_tags')->willReturn([1 => $source]);
+		$this->repairer->method('inspect')->willReturn($this->inspection($source));
+		$this->repairer->expects(self::never())->method('preview_merge');
+		$this->repairer->expects(self::never())->method('merge');
+
+		$tester = $this->create_tester(true);
+		$tester->setInputs(['yes', 'merge']);
+		self::assertSame(0, $tester->execute(['--tag-id' => 1], ['interactive' => true]));
+		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_MERGE_NO_TARGETS', $tester->getDisplay());
+	}
+
+	public function test_merge_target_selection_can_be_cancelled(): void
+	{
+		$source = $this->source_tag();
+		$target = ['prefix_id' => 2, 'prefix_tag' => 'Target', 'prefix_enabled' => 1];
+		$this->tag_manager->method('get_tags')->willReturn([1 => $source, 2 => $target]);
+		$this->repairer->method('inspect')->willReturn($this->inspection($source));
+		$this->repairer->expects(self::never())->method('preview_merge');
+		$this->repairer->expects(self::never())->method('merge');
+
+		$tester = $this->create_tester(true);
+		$tester->setInputs(['yes', 'merge', 'cancel']);
 		self::assertSame(0, $tester->execute(['--tag-id' => 1], ['interactive' => true]));
 	}
 
@@ -203,6 +282,22 @@ class repair_legacy_tags_test extends \phpbb_test_case
 		$tester = $this->create_tester(true);
 		$tester->setInputs(['yes', 'skip', 'quit']);
 		self::assertSame(0, $tester->execute([], ['interactive' => true]));
+	}
+
+	public function test_skip_is_first_and_default_action(): void
+	{
+		$source = $this->source_tag();
+		$this->tag_manager->method('get_tags')->willReturn([1 => $source]);
+		$this->repairer->method('inspect')->willReturn($this->inspection($source));
+		$this->repairer->expects(self::never())->method('preview');
+		$this->repairer->expects(self::never())->method('preview_merge');
+		$this->repairer->expects(self::never())->method('repair');
+		$this->repairer->expects(self::never())->method('merge');
+
+		$tester = $this->create_tester(true);
+		$tester->setInputs(['yes', '']);
+		self::assertSame(0, $tester->execute([], ['interactive' => true]));
+		self::assertStringContainsString('Finished: 0 split, 0 merged, 1 skipped.', $tester->getDisplay());
 	}
 
 	public function test_invalid_targeted_tag_is_rejected(): void
@@ -300,7 +395,7 @@ class repair_legacy_tags_test extends \phpbb_test_case
 		$tester = $this->create_tester(true);
 		$tester->setInputs(['yes', 'split', 'A', 'B', '', 'yes']);
 		self::assertSame(1, $tester->execute([], ['interactive' => true]));
-		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_FAILED', $tester->getDisplay());
+		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_SPLIT_FAILED', $tester->getDisplay());
 	}
 
 	protected function source_tag(): array
@@ -343,13 +438,13 @@ class repair_legacy_tags_test extends \phpbb_test_case
 		return new CommandTester($this->create_command($board_disabled));
 	}
 
-	protected function create_command(bool $board_disabled): \phpbb\topicprefixes\console\command\repair_legacy_tags
+	protected function create_command(bool $board_disabled): \phpbb\topicprefixes\console\command\repair_tags
 	{
 		$user = $this->getMockBuilder('\phpbb\user')
 			->disableOriginalConstructor()
 			->getMock();
 		$this->config = new \phpbb\config\config(['board_disable' => $board_disabled]);
-		$command = new \phpbb\topicprefixes\console\command\repair_legacy_tags(
+		$command = new \phpbb\topicprefixes\console\command\repair_tags(
 			$user,
 			$this->config,
 			$this->language,

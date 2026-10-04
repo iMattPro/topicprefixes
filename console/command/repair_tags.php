@@ -24,9 +24,9 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
- * Interactive repair tool for combined legacy topic tags.
+ * Interactive topic tag repair tool.
  */
-class repair_legacy_tags extends command
+class repair_tags extends command
 {
 	/** @var config */
 	protected $config;
@@ -61,7 +61,7 @@ class repair_legacy_tags extends command
 	protected function configure()
 	{
 		$this
-			->setName('topicprefixes:repair-legacy-tags')
+			->setName('topicprefixes:repair-tags')
 			->setDescription($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_DESCRIPTION'))
 			->addOption(
 				'tag-id',
@@ -95,7 +95,8 @@ class repair_legacy_tags extends command
 			return 0;
 		}
 
-		$tags = $this->tag_manager->get_tags();
+		$catalog = $this->tag_manager->get_tags();
+		$tags = $catalog;
 		$tag_id = $input->getOption('tag-id');
 		if ($tag_id !== null)
 		{
@@ -114,7 +115,8 @@ class repair_legacy_tags extends command
 		}
 
 		$io->title($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_TITLE'));
-		$repaired = 0;
+		$split = 0;
+		$merged = 0;
 		$skipped = 0;
 		foreach ($tags as $current_id => $tag)
 		{
@@ -131,31 +133,49 @@ class repair_legacy_tags extends command
 			));
 
 			$choices = [
-				$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_ACTION_SPLIT'),
 				$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_ACTION_SKIP'),
+				$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_ACTION_SPLIT'),
+				$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_ACTION_MERGE'),
 				$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_ACTION_QUIT'),
 			];
-			$action = $io->choice($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_ACTION'), $choices, $choices[1]);
-			if ($action === $choices[2])
+			$action = $io->choice($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_ACTION'), $choices, $choices[0]);
+			if ($action === $choices[3])
 			{
 				break;
 			}
-			if ($action !== $choices[0])
+			if ($action === $choices[0])
 			{
 				$skipped++;
 				continue;
 			}
 
-			$replacements = $this->ask_replacements($io, $tag['prefix_tag']);
-			if (!$replacements)
+			$is_merge = $action === $choices[2];
+			$replacements = [];
+			$target_id = null;
+			if ($is_merge)
 			{
-				$skipped++;
-				continue;
+				$target_id = $this->ask_merge_target($io, (int) $current_id, $catalog);
+				if ($target_id === null)
+				{
+					$skipped++;
+					continue;
+				}
+			}
+			else
+			{
+				$replacements = $this->ask_replacements($io, $tag['prefix_tag']);
+				if (!$replacements)
+				{
+					$skipped++;
+					continue;
+				}
 			}
 
 			try
 			{
-				$preview = $this->repairer->preview((int) $current_id, $replacements);
+				$preview = $is_merge
+					? $this->repairer->preview_merge((int) $current_id, $target_id)
+					: $this->repairer->preview((int) $current_id, $replacements);
 			}
 			catch (\InvalidArgumentException $e)
 			{
@@ -163,8 +183,11 @@ class repair_legacy_tags extends command
 				$skipped++;
 				continue;
 			}
-			$this->display_preview($io, $preview);
-			if (!$io->confirm($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_APPLY_CONFIRM'), false))
+			$this->display_preview($io, $preview, $is_merge);
+			$confirm_key = $is_merge
+				? 'CLI_TOPIC_PREFIXES_REPAIR_MERGE_APPLY_CONFIRM'
+				: 'CLI_TOPIC_PREFIXES_REPAIR_SPLIT_APPLY_CONFIRM';
+			if (!$io->confirm($this->language->lang($confirm_key), false))
 			{
 				$io->note($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_SKIPPED'));
 				$skipped++;
@@ -178,36 +201,58 @@ class repair_legacy_tags extends command
 
 			try
 			{
-				$result = $this->repairer->repair((int) $current_id, $replacements);
+				$result = $is_merge
+					? $this->repairer->merge((int) $current_id, $target_id)
+					: $this->repairer->repair((int) $current_id, $replacements);
 			}
 			catch (\Exception $e)
 			{
-				$io->error($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_FAILED', OutputFormatter::escape($e->getMessage())));
+				$failure_key = $is_merge
+					? 'CLI_TOPIC_PREFIXES_REPAIR_MERGE_FAILED'
+					: 'CLI_TOPIC_PREFIXES_REPAIR_SPLIT_FAILED';
+				$io->error($this->language->lang($failure_key, OutputFormatter::escape($e->getMessage())));
 				return 1;
 			}
 
 			$target_names = array_column($result['targets'], 'prefix_tag');
+			$log_key = $is_merge ? 'ACP_LOG_TAG_MERGED' : 'ACP_LOG_TAG_SPLIT';
 			$this->log->add(
 				'admin',
 				ANONYMOUS,
 				'',
-				'ACP_LOG_TAG_REPAIRED',
+				$log_key,
 				time(),
 				[
 					utf8_encode_ucr(utf8_htmlspecialchars($result['source']['prefix_tag'])),
 					utf8_encode_ucr(utf8_htmlspecialchars(implode(', ', $target_names))),
 				]
 			);
+			$success_key = $is_merge
+				? 'CLI_TOPIC_PREFIXES_REPAIR_MERGE_SUCCESS'
+				: 'CLI_TOPIC_PREFIXES_REPAIR_SPLIT_SUCCESS';
 			$io->success($this->language->lang(
-				'CLI_TOPIC_PREFIXES_REPAIR_SUCCESS',
+				$success_key,
 				OutputFormatter::escape($result['source']['prefix_tag']),
 				OutputFormatter::escape(implode(', ', $target_names)),
 				$result['topic_count']
 			));
-			$repaired++;
+			if ($is_merge)
+			{
+				$merged++;
+			}
+			else
+			{
+				$split++;
+			}
+			unset($catalog[$current_id]);
+			foreach ($result['targets'] as $target)
+			{
+				$target_id = (int) $target['prefix_id'];
+				$catalog[$target_id] = array_merge($catalog[$target_id] ?? [], $target);
+			}
 		}
 
-		$io->success($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_SUMMARY', $repaired, $skipped));
+		$io->success($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_SUMMARY', $split, $merged, $skipped));
 		return 0;
 	}
 
@@ -260,9 +305,50 @@ class repair_legacy_tags extends command
 	}
 
 	/**
+	 * Select one existing destination tag by identifier.
+	 */
+	protected function ask_merge_target(SymfonyStyle $io, int $source_id, array $catalog): ?int
+	{
+		$target_ids = [];
+		$choices = [];
+		foreach ($catalog as $tag_id => $tag)
+		{
+			$tag_id = (int) $tag_id;
+			if ($tag_id === $source_id)
+			{
+				continue;
+			}
+
+			$label = $this->language->lang(
+				'CLI_TOPIC_PREFIXES_REPAIR_MERGE_TARGET_OPTION',
+				$tag_id,
+				OutputFormatter::escape($tag['prefix_tag'])
+			);
+			$choices[] = $label;
+			$target_ids[$label] = $tag_id;
+		}
+
+		if (!$choices)
+		{
+			$io->note($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_MERGE_NO_TARGETS'));
+			return null;
+		}
+
+		$cancel = $this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_MERGE_CANCEL');
+		$choices[] = $cancel;
+		$selected = $io->choice(
+			$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_MERGE_TARGET'),
+			$choices,
+			$cancel
+		);
+
+		return $selected === $cancel ? null : $target_ids[$selected];
+	}
+
+	/**
 	 * Display all effects known before mutation.
 	 */
-	protected function display_preview(SymfonyStyle $io, array $preview): void
+	protected function display_preview(SymfonyStyle $io, array $preview, bool $is_merge): void
 	{
 		$rows = [];
 		foreach ($preview['targets'] as $target)
@@ -275,14 +361,24 @@ class repair_legacy_tags extends command
 			];
 		}
 
-		$io->section($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_PREVIEW'));
+		$io->section($this->language->lang(
+			$is_merge
+				? 'CLI_TOPIC_PREFIXES_REPAIR_MERGE_PREVIEW'
+				: 'CLI_TOPIC_PREFIXES_REPAIR_SPLIT_PREVIEW'
+		));
 		$io->table([
 			$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_REPLACEMENT'),
 			$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_STATUS'),
 		], $rows);
-		$io->listing([
-			$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_PREVIEW_TOPICS', $preview['topic_count']),
-			$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_PREVIEW_FORUMS', $preview['forum_count']),
+		$topics_key = $is_merge
+			? 'CLI_TOPIC_PREFIXES_REPAIR_MERGE_PREVIEW_TOPICS'
+			: 'CLI_TOPIC_PREFIXES_REPAIR_SPLIT_PREVIEW_TOPICS';
+		$forums_key = $is_merge
+			? 'CLI_TOPIC_PREFIXES_REPAIR_MERGE_PREVIEW_FORUMS'
+			: 'CLI_TOPIC_PREFIXES_REPAIR_SPLIT_PREVIEW_FORUMS';
+		$effects = [
+			$this->language->lang($topics_key, $preview['topic_count']),
+			$this->language->lang($forums_key, $preview['forum_count']),
 			$this->language->lang(
 				'CLI_TOPIC_PREFIXES_REPAIR_PREVIEW_TEXT',
 				$preview['cleanup']['topic_title'],
@@ -291,6 +387,11 @@ class repair_legacy_tags extends command
 				$preview['cleanup']['forum_last_post_subject']
 			),
 			$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_PREVIEW_DELETE'),
-		]);
+		];
+		if ($is_merge && !empty($preview['source']['prefix_enabled']) && empty($preview['targets'][0]['prefix_enabled']))
+		{
+			array_splice($effects, 2, 0, [$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_MERGE_PREVIEW_ENABLE')]);
+		}
+		$io->listing($effects);
 	}
 }

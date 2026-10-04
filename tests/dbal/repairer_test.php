@@ -110,6 +110,42 @@ class repairer_test extends tags_base
 		self::assertSame(2, $this->count_rows('phpbb_topic_prefixes_forums', 'prefix_id = 4'));
 	}
 
+	public function test_explicit_merge_uses_target_id_and_preserves_target_metadata(): void
+	{
+		$this->db->sql_query("UPDATE phpbb_topic_prefixes SET prefix_tag = 'Destination' WHERE prefix_id = 2");
+		$this->db->sql_query("UPDATE phpbb_topic_prefixes SET prefix_tag = 'Destination', prefix_enabled = 0 WHERE prefix_id = 4");
+
+		$preview = $this->create_repairer()->preview_merge(1, 4);
+		self::assertSame(4, $preview['targets'][0]['prefix_id']);
+		self::assertTrue($preview['targets'][0]['existing']);
+		self::assertSame(0, $preview['targets'][0]['prefix_enabled']);
+
+		$result = $this->create_repairer()->merge(1, 4);
+		self::assertSame(4, $result['targets'][0]['prefix_id']);
+		self::assertSame(0, $this->count_rows('phpbb_topic_prefixes', 'prefix_id = 1'));
+		self::assertSame(1, $this->count_rows('phpbb_topic_prefixes', "prefix_id = 4 AND prefix_color = 'F47738' AND prefix_order = 4 AND prefix_enabled = 1"));
+		self::assertSame(1, $this->count_rows('phpbb_topic_prefixes_topics', 'topic_id = 10 AND prefix_id = 2'));
+		self::assertSame(1, $this->count_rows('phpbb_topic_prefixes_topics', 'topic_id = 10 AND prefix_id = 4'));
+		self::assertSame(1, $this->count_rows('phpbb_topic_prefixes_topics', 'topic_id = 11 AND prefix_id = 4'));
+		self::assertSame(2, $this->count_rows('phpbb_topic_prefixes_forums', 'prefix_id = 4'));
+	}
+
+	public function test_explicit_merge_rejects_source_as_target(): void
+	{
+		$this->expectException(\InvalidArgumentException::class);
+		$this->expectExceptionMessage('CLI_TOPIC_PREFIXES_REPAIR_SOURCE_TARGET');
+
+		$this->create_repairer()->preview_merge(1, 1);
+	}
+
+	public function test_explicit_merge_rejects_missing_target(): void
+	{
+		$this->expectException(\InvalidArgumentException::class);
+		$this->expectExceptionMessage('CLI_TOPIC_PREFIXES_REPAIR_MERGE_TARGET_NOT_FOUND');
+
+		$this->create_repairer()->preview_merge(1, 999);
+	}
+
 	public function test_unicode_and_case_sensitive_targets_remain_distinct(): void
 	{
 		$this->db->sql_query("UPDATE phpbb_topic_prefixes SET prefix_tag = 'Combined' WHERE prefix_id = 3");

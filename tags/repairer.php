@@ -14,7 +14,7 @@ use phpbb\cache\driver\driver_interface as cache;
 use phpbb\db\driver\driver_interface;
 
 /**
- * Safely split one combined tag into administrator-supplied separate tags.
+ * Safely split or merge topic tags.
  */
 class repairer
 {
@@ -94,12 +94,36 @@ class repairer
 	{
 		$source = $this->get_source($source_id);
 		$targets = $this->resolve_targets($source, $replacements);
+		return $this->build_preview($source, $targets);
+	}
+
+	/**
+	 * Preview merging one source tag into one existing target.
+	 */
+	public function preview_merge(int $source_id, int $target_id): array
+	{
+		$source = $this->get_source($source_id);
+		if ($source_id === $target_id)
+		{
+			throw new \InvalidArgumentException('CLI_TOPIC_PREFIXES_REPAIR_SOURCE_TARGET');
+		}
+
+		$target = $this->get_tag($target_id, 'CLI_TOPIC_PREFIXES_REPAIR_MERGE_TARGET_NOT_FOUND');
+		$target['existing'] = true;
+		return $this->build_preview($source, [$target]);
+	}
+
+	/**
+	 * Build a preview for resolved target definitions.
+	 */
+	protected function build_preview(array $source, array $targets): array
+	{
 		$scan = $this->scan_topics($source);
 
 		return [
 			'source' => $source,
 			'targets' => $targets,
-			'forum_count' => count($this->get_source_forums($source_id)),
+			'forum_count' => count($this->get_source_forums($source['prefix_id'])),
 			'topic_count' => $scan['topic_count'],
 			'cleanup' => $scan['cleanup'],
 		];
@@ -119,8 +143,24 @@ class repairer
 	 */
 	public function repair(int $source_id, array $replacements): array
 	{
-		$preview = $this->preview($source_id, $replacements);
+		return $this->apply_preview($this->preview($source_id, $replacements));
+	}
+
+	/**
+	 * Merge one source tag into one existing target.
+	 */
+	public function merge(int $source_id, int $target_id): array
+	{
+		return $this->apply_preview($this->preview_merge($source_id, $target_id));
+	}
+
+	/**
+	 * Apply one validated preview.
+	 */
+	protected function apply_preview(array $preview): array
+	{
 		$source = $preview['source'];
+		$source_id = (int) $source['prefix_id'];
 		$targets = $this->create_or_update_targets($source, $preview['targets']);
 		$target_ids = array_column($targets, 'prefix_id');
 		$totals = [
@@ -178,24 +218,32 @@ class repairer
 	 */
 	protected function get_source(int $source_id): array
 	{
+		return $this->get_tag($source_id, 'CLI_TOPIC_PREFIXES_REPAIR_TAG_NOT_FOUND');
+	}
+
+	/**
+	 * Load and normalize one tag definition.
+	 */
+	protected function get_tag(int $tag_id, string $missing_key): array
+	{
 		$sql = 'SELECT prefix_id, prefix_tag, prefix_color, prefix_enabled, prefix_order
 			FROM ' . $this->tags_table . '
-			WHERE prefix_id = ' . (int) $source_id;
+			WHERE prefix_id = ' . (int) $tag_id;
 		$result = $this->db->sql_query($sql);
-		$source = $this->db->sql_fetchrow($result);
+		$tag = $this->db->sql_fetchrow($result);
 		$this->db->sql_freeresult($result);
-		if (!$source)
+		if (!$tag)
 		{
-			throw new \InvalidArgumentException('CLI_TOPIC_PREFIXES_REPAIR_TAG_NOT_FOUND');
+			throw new \InvalidArgumentException($missing_key);
 		}
 
-		$source['prefix_id'] = (int) $source['prefix_id'];
-		$source['prefix_enabled'] = (int) $source['prefix_enabled'];
-		$source['prefix_order'] = (int) $source['prefix_order'];
-		$source['stored_name'] = $source['prefix_tag'];
-		$source['prefix_tag'] = manager::decode_name($source['prefix_tag']);
+		$tag['prefix_id'] = (int) $tag['prefix_id'];
+		$tag['prefix_enabled'] = (int) $tag['prefix_enabled'];
+		$tag['prefix_order'] = (int) $tag['prefix_order'];
+		$tag['stored_name'] = $tag['prefix_tag'];
+		$tag['prefix_tag'] = manager::decode_name($tag['prefix_tag']);
 
-		return $source;
+		return $tag;
 	}
 
 	/**
