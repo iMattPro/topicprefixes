@@ -112,13 +112,15 @@ class viewforum_listener implements EventSubscriberInterface
 		$available = array_filter($forum_tags, static function ($tag) {
 			return !empty($tag['prefix_enabled']);
 		});
+		$requested_ids = $this->get_requested_ids();
 		$unavailable_ids = $this->manager->get_unavailable_tag_ids($this->forum_id);
-		$assigned_ids = $unavailable_ids
-			? $this->filter->get_visible_tag_ids_for_forum($this->forum_id, $unavailable_ids)
+		$requested_unavailable_ids = array_values(array_intersect($requested_ids, $unavailable_ids));
+		$assigned_ids = $requested_unavailable_ids
+			? $this->filter->get_visible_tag_ids_for_forum($this->forum_id, $requested_unavailable_ids)
 			: [];
-		$assigned = $this->manager->get_tags_by_ids($assigned_ids);
+		$assigned = $assigned_ids ? $this->manager->get_tags_by_ids($assigned_ids) : [];
 		$filterable = $forum_tags + $assigned;
-		$this->selected_ids = array_values(array_intersect($this->get_requested_ids(), array_keys($filterable)));
+		$this->selected_ids = array_values(array_intersect($requested_ids, array_keys($filterable)));
 
 		// Keep unavailable or disabled selected tags visible so users can remove active filters.
 		foreach ($this->selected_ids as $tag_id)
