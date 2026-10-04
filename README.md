@@ -22,7 +22,7 @@ combined prefixes that could not be split automatically, such as `(A)(B)` or
 `A|B`:
 
 ```shell
-php bin/phpbbcli.php topicprefixes:repair-tags
+php bin/phpbbcli.php topicprefixes:repair-legacy-tags
 ```
 
 Use `--tag-id=ID` to repair one tag. Back up the database and disable the board

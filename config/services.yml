@@ -102,8 +102,8 @@ services:
             - '%tables.posts%'
             - '%tables.forums%'
 
-    phpbb.topicprefixes.console.command.repair_tags:
-        class: phpbb\topicprefixes\console\command\repair_tags
+    phpbb.topicprefixes.console.command.repair_legacy_tags:
+        class: phpbb\topicprefixes\console\command\repair_legacy_tags
         arguments:
             - '@user'
             - '@config'

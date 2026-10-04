@@ -26,7 +26,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 /**
  * Interactive repair tool for combined legacy topic tags.
  */
-class repair_tags extends command
+class repair_legacy_tags extends command
 {
 	/** @var config */
 	protected $config;
@@ -61,7 +61,7 @@ class repair_tags extends command
 	protected function configure()
 	{
 		$this
-			->setName('topicprefixes:repair-tags')
+			->setName('topicprefixes:repair-legacy-tags')
 			->setDescription($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_DESCRIPTION'))
 			->addOption(
 				'tag-id',

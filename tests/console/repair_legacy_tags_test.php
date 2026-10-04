@@ -12,7 +12,7 @@ namespace phpbb\topicprefixes\tests\console;
 
 use Symfony\Component\Console\Tester\CommandTester;
 
-class repair_tags_test extends \phpbb_test_case
+class repair_legacy_tags_test extends \phpbb_test_case
 {
 	/** @var \PHPUnit\Framework\MockObject\MockObject|\phpbb\language\language */
 	protected $language;
@@ -39,7 +39,7 @@ class repair_tags_test extends \phpbb_test_case
 			$arguments = func_get_args();
 			array_shift($arguments);
 			$messages = [
-				'CLI_TOPIC_PREFIXES_REPAIR_ACTION_REPAIR' => 'repair',
+				'CLI_TOPIC_PREFIXES_REPAIR_ACTION_REPAIR' => 'split or replace',
 				'CLI_TOPIC_PREFIXES_REPAIR_ACTION_SKIP' => 'skip',
 				'CLI_TOPIC_PREFIXES_REPAIR_ACTION_QUIT' => 'quit',
 			];
@@ -60,6 +60,11 @@ class repair_tags_test extends \phpbb_test_case
 		$tester = $this->create_tester(true);
 		self::assertSame(1, $tester->execute([], ['interactive' => false]));
 		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_INTERACTIVE_REQUIRED', $tester->getDisplay());
+	}
+
+	public function test_command_name_describes_legacy_scope(): void
+	{
+		self::assertSame('topicprefixes:repair-legacy-tags', $this->create_command(true)->getName());
 	}
 
 	public function test_command_requires_disabled_board(): void
@@ -230,7 +235,7 @@ class repair_tags_test extends \phpbb_test_case
 		$this->repairer->expects(self::never())->method('repair');
 
 		$tester = $this->create_tester(true);
-		$tester->setInputs(['yes', 'repair', '']);
+		$tester->setInputs(['yes', 'split or replace', '']);
 		self::assertSame(0, $tester->execute([], ['interactive' => true]));
 		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_SKIPPED', $tester->getDisplay());
 	}
@@ -244,7 +249,7 @@ class repair_tags_test extends \phpbb_test_case
 		$this->repairer->expects(self::never())->method('repair');
 
 		$tester = $this->create_tester(true);
-		$tester->setInputs(['yes', 'repair', str_repeat('x', 51), '(A)(B)', 'A', 'A', 'B', '', 'no']);
+		$tester->setInputs(['yes', 'split or replace', str_repeat('x', 51), '(A)(B)', 'A', 'A', 'B', '', 'no']);
 		self::assertSame(0, $tester->execute([], ['interactive' => true]));
 		$display = $tester->getDisplay();
 		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_INVALID_TAG', $display);
@@ -262,7 +267,7 @@ class repair_tags_test extends \phpbb_test_case
 		$this->repairer->expects(self::never())->method('repair');
 
 		$tester = $this->create_tester(true);
-		$tester->setInputs(['yes', 'repair', 'A', '']);
+		$tester->setInputs(['yes', 'split or replace', 'A', '']);
 		self::assertSame(0, $tester->execute([], ['interactive' => true]));
 		self::assertStringContainsString('Invalid replacements.', $tester->getDisplay());
 	}
@@ -279,7 +284,7 @@ class repair_tags_test extends \phpbb_test_case
 		$this->repairer->expects(self::never())->method('repair');
 
 		$tester = $this->create_tester(true);
-		$tester->setInputs(['yes', 'repair', 'A', 'B', '', 'yes']);
+		$tester->setInputs(['yes', 'split or replace', 'A', 'B', '', 'yes']);
 		self::assertSame(1, $tester->execute([], ['interactive' => true]));
 		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_BOARD_ENABLED', $tester->getDisplay());
 	}
@@ -293,7 +298,7 @@ class repair_tags_test extends \phpbb_test_case
 		$this->repairer->method('repair')->willThrowException(new \RuntimeException('Database failure.'));
 
 		$tester = $this->create_tester(true);
-		$tester->setInputs(['yes', 'repair', 'A', 'B', '', 'yes']);
+		$tester->setInputs(['yes', 'split or replace', 'A', 'B', '', 'yes']);
 		self::assertSame(1, $tester->execute([], ['interactive' => true]));
 		self::assertStringContainsString('CLI_TOPIC_PREFIXES_REPAIR_FAILED', $tester->getDisplay());
 	}
@@ -335,11 +340,16 @@ class repair_tags_test extends \phpbb_test_case
 
 	protected function create_tester(bool $board_disabled): CommandTester
 	{
+		return new CommandTester($this->create_command($board_disabled));
+	}
+
+	protected function create_command(bool $board_disabled): \phpbb\topicprefixes\console\command\repair_legacy_tags
+	{
 		$user = $this->getMockBuilder('\phpbb\user')
 			->disableOriginalConstructor()
 			->getMock();
 		$this->config = new \phpbb\config\config(['board_disable' => $board_disabled]);
-		$command = new \phpbb\topicprefixes\console\command\repair_tags(
+		$command = new \phpbb\topicprefixes\console\command\repair_legacy_tags(
 			$user,
 			$this->config,
 			$this->language,
@@ -348,6 +358,6 @@ class repair_tags_test extends \phpbb_test_case
 			$this->log
 		);
 
-		return new CommandTester($command);
+		return $command;
 	}
 }
