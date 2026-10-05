@@ -10,7 +10,7 @@
 - Preserved tags through topic moves, splits, forks, and merges, including tags retained after moving into forums where they are unavailable for new assignments.
 - Added a safe, restartable upgrade that converts legacy prefixes and assignments into tags while removing matching prefix text from topic titles and first-post subjects.
 - Added an interactive CLI for splitting tags into multiple separate tags or merging one tag into another.
-- Raised minimum requirements to phpBB 3.3.0 and PHP 7.2.
+- Raised minimum requirements to phpBB 3.3.5 and PHP 7.2.
 - Note: implementations for showing tags on UCP main page, bookmarks, and subscriptions will take effect after phpBB adds new proposed events (targeted for 3.3.19).
 
 ### 1.0.2 - 2025-12-17
