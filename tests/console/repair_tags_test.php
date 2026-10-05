@@ -400,6 +400,29 @@ class repair_tags_test extends \phpbb_test_case
 		);
 	}
 
+	public function test_merge_failure_aborts(): void
+	{
+		$source = $this->source_tag();
+		$target = ['prefix_id' => 2, 'prefix_tag' => 'Target', 'prefix_enabled' => 1];
+		$preview = $this->preview($source);
+		$preview['targets'] = [$target + ['existing' => true]];
+
+		$this->tag_manager->method('get_tags')->willReturn([1 => $source, 2 => $target]);
+		$this->repairer->method('inspect')->willReturn($this->inspection($source));
+		$this->repairer->expects(self::once())->method('preview_merge')->with(1, 2)->willReturn($preview);
+		$this->repairer->expects(self::once())->method('merge')->with(1, 2)->willThrowException(new \RuntimeException('Database failure.'));
+		$this->repairer->expects(self::never())->method('repair');
+		$this->log->expects(self::never())->method('add');
+
+		$tester = $this->create_tester(true);
+		$tester->setInputs(['yes', 'merge', 'Tag #2: Target', 'yes']);
+		self::assertSame(1, $tester->execute(['--tag-id' => 1], ['interactive' => true]));
+		self::assertStringContainsString(
+			$this->language->lang('CLI_TOPIC_TAGS_REPAIR_MERGE_FAILED', 'Database failure.'),
+			preg_replace('/\s+/', ' ', $tester->getDisplay())
+		);
+	}
+
 	protected function source_tag(): array
 	{
 		return [
