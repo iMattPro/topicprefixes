@@ -105,10 +105,10 @@ class repairer
 		$source = $this->get_source($source_id);
 		if ($source_id === $target_id)
 		{
-			throw new \InvalidArgumentException('CLI_TOPIC_PREFIXES_REPAIR_SOURCE_TARGET');
+			throw new \InvalidArgumentException('CLI_TOPIC_TAGS_REPAIR_SOURCE_TARGET');
 		}
 
-		$target = $this->get_tag($target_id, 'CLI_TOPIC_PREFIXES_REPAIR_MERGE_TARGET_NOT_FOUND');
+		$target = $this->get_tag($target_id, 'CLI_TOPIC_TAGS_REPAIR_MERGE_TARGET_NOT_FOUND');
 		$target['existing'] = true;
 		return $this->build_preview($source, [$target]);
 	}
@@ -218,7 +218,7 @@ class repairer
 	 */
 	protected function get_source(int $source_id): array
 	{
-		return $this->get_tag($source_id, 'CLI_TOPIC_PREFIXES_REPAIR_TAG_NOT_FOUND');
+		return $this->get_tag($source_id, 'CLI_TOPIC_TAGS_REPAIR_TAG_NOT_FOUND');
 	}
 
 	/**
@@ -255,7 +255,7 @@ class repairer
 	{
 		if (!$replacements)
 		{
-			throw new \InvalidArgumentException('CLI_TOPIC_PREFIXES_REPAIR_NEW_TAG_REQUIRED');
+			throw new \InvalidArgumentException('CLI_TOPIC_TAGS_REPAIR_NEW_TAG_REQUIRED');
 		}
 
 		$result = $this->db->sql_query('SELECT prefix_id, prefix_tag, prefix_enabled FROM ' . $this->tags_table);
@@ -280,18 +280,18 @@ class repairer
 			$stored_name = manager::normalize_name((string) $replacement);
 			if ($stored_name === '')
 			{
-				throw new \InvalidArgumentException('CLI_TOPIC_PREFIXES_REPAIR_INVALID_TAG');
+				throw new \InvalidArgumentException('CLI_TOPIC_TAGS_REPAIR_INVALID_TAG');
 			}
 
 			$name = manager::decode_name($stored_name);
 			$key = base64_encode($name);
 			if ($name === $source['prefix_tag'])
 			{
-				throw new \InvalidArgumentException('CLI_TOPIC_PREFIXES_REPAIR_SOURCE_TARGET');
+				throw new \InvalidArgumentException('CLI_TOPIC_TAGS_REPAIR_SOURCE_TARGET');
 			}
 			if (isset($seen[$key]))
 			{
-				throw new \InvalidArgumentException('CLI_TOPIC_PREFIXES_REPAIR_DUPLICATE_TAG');
+				throw new \InvalidArgumentException('CLI_TOPIC_TAGS_REPAIR_DUPLICATE_TAG');
 			}
 			$seen[$key] = true;
 

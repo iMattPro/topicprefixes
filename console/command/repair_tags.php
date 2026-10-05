@@ -62,12 +62,12 @@ class repair_tags extends command
 	{
 		$this
 			->setName('topicprefixes:repair-tags')
-			->setDescription($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_DESCRIPTION'))
+			->setDescription($this->language->lang('CLI_TOPIC_TAGS_REPAIR_DESCRIPTION'))
 			->addOption(
 				'tag-id',
 				null,
 				InputOption::VALUE_REQUIRED,
-				$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_TAG_ID')
+				$this->language->lang('CLI_TOPIC_TAGS_REPAIR_TAG_ID')
 			);
 	}
 
@@ -79,19 +79,19 @@ class repair_tags extends command
 		$io = new SymfonyStyle($input, $output);
 		if (!$input->isInteractive())
 		{
-			$io->error($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_INTERACTIVE_REQUIRED'));
+			$io->error($this->language->lang('CLI_TOPIC_TAGS_REPAIR_INTERACTIVE_REQUIRED'));
 			return 1;
 		}
 		if (empty($this->config['board_disable']))
 		{
-			$io->error($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_BOARD_ENABLED'));
+			$io->error($this->language->lang('CLI_TOPIC_TAGS_REPAIR_BOARD_ENABLED'));
 			return 1;
 		}
 
-		$io->warning($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_WARNING'));
-		if (!$io->confirm($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_BACKUP_CONFIRM'), false))
+		$io->warning($this->language->lang('CLI_TOPIC_TAGS_REPAIR_WARNING'));
+		if (!$io->confirm($this->language->lang('CLI_TOPIC_TAGS_REPAIR_BACKUP_CONFIRM'), false))
 		{
-			$io->note($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_CANCELLED'));
+			$io->note($this->language->lang('CLI_TOPIC_TAGS_REPAIR_CANCELLED'));
 			return 0;
 		}
 
@@ -103,18 +103,18 @@ class repair_tags extends command
 			$tag_id = (int) $tag_id;
 			if ($tag_id <= 0 || !isset($tags[$tag_id]))
 			{
-				$io->error($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_TAG_NOT_FOUND'));
+				$io->error($this->language->lang('CLI_TOPIC_TAGS_REPAIR_TAG_NOT_FOUND'));
 				return 1;
 			}
 			$tags = [$tag_id => $tags[$tag_id]];
 		}
 		if (!$tags)
 		{
-			$io->note($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_NO_TAGS'));
+			$io->note($this->language->lang('CLI_TOPIC_TAGS_REPAIR_NO_TAGS'));
 			return 0;
 		}
 
-		$io->title($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_TITLE'));
+		$io->title($this->language->lang('CLI_TOPIC_TAGS_REPAIR_TITLE'));
 		$split = 0;
 		$merged = 0;
 		$skipped = 0;
@@ -122,23 +122,23 @@ class repair_tags extends command
 		{
 			$details = $this->repairer->inspect((int) $current_id);
 			$io->section($this->language->lang(
-				'CLI_TOPIC_PREFIXES_REPAIR_SOURCE',
+				'CLI_TOPIC_TAGS_REPAIR_SOURCE',
 				$current_id,
 				OutputFormatter::escape($tag['prefix_tag']),
 				!empty($tag['prefix_enabled'])
-					? $this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_ENABLED')
-					: $this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_DISABLED'),
-				$details['topic_count'],
-				$details['forum_count']
+					? $this->language->lang('CLI_TOPIC_TAGS_REPAIR_ENABLED')
+					: $this->language->lang('CLI_TOPIC_TAGS_REPAIR_DISABLED'),
+				$this->language->lang('CLI_TOPIC_TAGS_REPAIR_SOURCE_TOPICS', $details['topic_count']),
+				$this->language->lang('CLI_TOPIC_TAGS_REPAIR_SOURCE_FORUMS', $details['forum_count'])
 			));
 
 			$choices = [
-				$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_ACTION_SKIP'),
-				$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_ACTION_SPLIT'),
-				$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_ACTION_MERGE'),
-				$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_ACTION_QUIT'),
+				$this->language->lang('CLI_TOPIC_TAGS_REPAIR_ACTION_SKIP'),
+				$this->language->lang('CLI_TOPIC_TAGS_REPAIR_ACTION_SPLIT'),
+				$this->language->lang('CLI_TOPIC_TAGS_REPAIR_ACTION_MERGE'),
+				$this->language->lang('CLI_TOPIC_TAGS_REPAIR_ACTION_QUIT'),
 			];
-			$action = $io->choice($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_ACTION'), $choices, $choices[0]);
+			$action = $io->choice($this->language->lang('CLI_TOPIC_TAGS_REPAIR_ACTION'), $choices, $choices[0]);
 			if ($action === $choices[3])
 			{
 				break;
@@ -185,17 +185,17 @@ class repair_tags extends command
 			}
 			$this->display_preview($io, $preview, $is_merge);
 			$confirm_key = $is_merge
-				? 'CLI_TOPIC_PREFIXES_REPAIR_MERGE_APPLY_CONFIRM'
-				: 'CLI_TOPIC_PREFIXES_REPAIR_SPLIT_APPLY_CONFIRM';
+				? 'CLI_TOPIC_TAGS_REPAIR_MERGE_APPLY_CONFIRM'
+				: 'CLI_TOPIC_TAGS_REPAIR_SPLIT_APPLY_CONFIRM';
 			if (!$io->confirm($this->language->lang($confirm_key), false))
 			{
-				$io->note($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_SKIPPED'));
+				$io->note($this->language->lang('CLI_TOPIC_TAGS_REPAIR_SKIPPED'));
 				$skipped++;
 				continue;
 			}
 			if (empty($this->config['board_disable']))
 			{
-				$io->error($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_BOARD_ENABLED'));
+				$io->error($this->language->lang('CLI_TOPIC_TAGS_REPAIR_BOARD_ENABLED'));
 				return 1;
 			}
 
@@ -208,8 +208,8 @@ class repair_tags extends command
 			catch (\Exception $e)
 			{
 				$failure_key = $is_merge
-					? 'CLI_TOPIC_PREFIXES_REPAIR_MERGE_FAILED'
-					: 'CLI_TOPIC_PREFIXES_REPAIR_SPLIT_FAILED';
+					? 'CLI_TOPIC_TAGS_REPAIR_MERGE_FAILED'
+					: 'CLI_TOPIC_TAGS_REPAIR_SPLIT_FAILED';
 				$io->error($this->language->lang($failure_key, OutputFormatter::escape($e->getMessage())));
 				return 1;
 			}
@@ -228,8 +228,8 @@ class repair_tags extends command
 				]
 			);
 			$success_key = $is_merge
-				? 'CLI_TOPIC_PREFIXES_REPAIR_MERGE_SUCCESS'
-				: 'CLI_TOPIC_PREFIXES_REPAIR_SPLIT_SUCCESS';
+				? 'CLI_TOPIC_TAGS_REPAIR_MERGE_SUCCESS'
+				: 'CLI_TOPIC_TAGS_REPAIR_SPLIT_SUCCESS';
 			$io->success($this->language->lang(
 				$success_key,
 				OutputFormatter::escape($result['source']['prefix_tag']),
@@ -252,7 +252,12 @@ class repair_tags extends command
 			}
 		}
 
-		$io->success($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_SUMMARY', $split, $merged, $skipped));
+		$io->success($this->language->lang(
+			'CLI_TOPIC_TAGS_REPAIR_SUMMARY',
+			$this->language->lang('CLI_TOPIC_TAGS_REPAIR_SUMMARY_SPLITS', $split),
+			$this->language->lang('CLI_TOPIC_TAGS_REPAIR_SUMMARY_MERGES', $merged),
+			$this->language->lang('CLI_TOPIC_TAGS_REPAIR_SUMMARY_SKIPS', $skipped)
+		));
 		return 0;
 	}
 
@@ -266,14 +271,14 @@ class repair_tags extends command
 		while (true)
 		{
 			$prompt = $replacements
-				? $this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_ANOTHER_TAG')
-				: $this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_FIRST_TAG');
+				? $this->language->lang('CLI_TOPIC_TAGS_REPAIR_ANOTHER_TAG')
+				: $this->language->lang('CLI_TOPIC_TAGS_REPAIR_FIRST_TAG');
 			$value = $io->ask($prompt, false);
 			if ($value === false || $value === null || trim($value) === '')
 			{
 				if (!$replacements)
 				{
-					$io->note($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_SKIPPED'));
+					$io->note($this->language->lang('CLI_TOPIC_TAGS_REPAIR_SKIPPED'));
 				}
 				break;
 			}
@@ -281,19 +286,19 @@ class repair_tags extends command
 			$stored_name = manager::normalize_name($value);
 			if ($stored_name === '')
 			{
-				$io->error($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_INVALID_TAG'));
+				$io->error($this->language->lang('CLI_TOPIC_TAGS_REPAIR_INVALID_TAG'));
 				continue;
 			}
 			$name = manager::decode_name($stored_name);
 			$key = base64_encode($name);
 			if ($name === $source_name)
 			{
-				$io->error($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_SOURCE_TARGET'));
+				$io->error($this->language->lang('CLI_TOPIC_TAGS_REPAIR_SOURCE_TARGET'));
 				continue;
 			}
 			if (isset($seen[$key]))
 			{
-				$io->error($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_DUPLICATE_TAG'));
+				$io->error($this->language->lang('CLI_TOPIC_TAGS_REPAIR_DUPLICATE_TAG'));
 				continue;
 			}
 
@@ -320,7 +325,7 @@ class repair_tags extends command
 			}
 
 			$label = $this->language->lang(
-				'CLI_TOPIC_PREFIXES_REPAIR_MERGE_TARGET_OPTION',
+				'CLI_TOPIC_TAGS_REPAIR_MERGE_TARGET_OPTION',
 				$tag_id,
 				OutputFormatter::escape($tag['prefix_tag'])
 			);
@@ -330,14 +335,14 @@ class repair_tags extends command
 
 		if (!$choices)
 		{
-			$io->note($this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_MERGE_NO_TARGETS'));
+			$io->note($this->language->lang('CLI_TOPIC_TAGS_REPAIR_MERGE_NO_TARGETS'));
 			return null;
 		}
 
-		$cancel = $this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_MERGE_CANCEL');
+		$cancel = $this->language->lang('CLI_TOPIC_TAGS_REPAIR_MERGE_CANCEL');
 		$choices[] = $cancel;
 		$selected = $io->choice(
-			$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_MERGE_TARGET'),
+			$this->language->lang('CLI_TOPIC_TAGS_REPAIR_MERGE_TARGET'),
 			$choices,
 			$cancel
 		);
@@ -356,41 +361,41 @@ class repair_tags extends command
 			$rows[] = [
 				OutputFormatter::escape($target['prefix_tag']),
 				$target['existing']
-					? $this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_EXISTING_TAG', $target['prefix_id'])
-					: $this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_NEW_TAG'),
+					? $this->language->lang('CLI_TOPIC_TAGS_REPAIR_EXISTING_TAG', $target['prefix_id'])
+					: $this->language->lang('CLI_TOPIC_TAGS_REPAIR_NEW_TAG'),
 			];
 		}
 
 		$io->section($this->language->lang(
 			$is_merge
-				? 'CLI_TOPIC_PREFIXES_REPAIR_MERGE_PREVIEW'
-				: 'CLI_TOPIC_PREFIXES_REPAIR_SPLIT_PREVIEW'
+				? 'CLI_TOPIC_TAGS_REPAIR_MERGE_PREVIEW'
+				: 'CLI_TOPIC_TAGS_REPAIR_SPLIT_PREVIEW'
 		));
 		$io->table([
-			$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_REPLACEMENT'),
-			$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_STATUS'),
+			$this->language->lang('CLI_TOPIC_TAGS_REPAIR_REPLACEMENT'),
+			$this->language->lang('CLI_TOPIC_TAGS_REPAIR_STATUS'),
 		], $rows);
 		$topics_key = $is_merge
-			? 'CLI_TOPIC_PREFIXES_REPAIR_MERGE_PREVIEW_TOPICS'
-			: 'CLI_TOPIC_PREFIXES_REPAIR_SPLIT_PREVIEW_TOPICS';
+			? 'CLI_TOPIC_TAGS_REPAIR_MERGE_PREVIEW_TOPICS'
+			: 'CLI_TOPIC_TAGS_REPAIR_SPLIT_PREVIEW_TOPICS';
 		$forums_key = $is_merge
-			? 'CLI_TOPIC_PREFIXES_REPAIR_MERGE_PREVIEW_FORUMS'
-			: 'CLI_TOPIC_PREFIXES_REPAIR_SPLIT_PREVIEW_FORUMS';
+			? 'CLI_TOPIC_TAGS_REPAIR_MERGE_PREVIEW_FORUMS'
+			: 'CLI_TOPIC_TAGS_REPAIR_SPLIT_PREVIEW_FORUMS';
 		$effects = [
 			$this->language->lang($topics_key, $preview['topic_count']),
 			$this->language->lang($forums_key, $preview['forum_count']),
 			$this->language->lang(
-				'CLI_TOPIC_PREFIXES_REPAIR_PREVIEW_TEXT',
-				$preview['cleanup']['topic_title'],
-				$preview['cleanup']['post_subject'],
-				$preview['cleanup']['topic_last_post_subject'],
-				$preview['cleanup']['forum_last_post_subject']
+				'CLI_TOPIC_TAGS_REPAIR_PREVIEW_TEXT',
+				$this->language->lang('CLI_TOPIC_TAGS_REPAIR_PREVIEW_TEXT_TOPIC_TITLES', $preview['cleanup']['topic_title']),
+				$this->language->lang('CLI_TOPIC_TAGS_REPAIR_PREVIEW_TEXT_POST_SUBJECTS', $preview['cleanup']['post_subject']),
+				$this->language->lang('CLI_TOPIC_TAGS_REPAIR_PREVIEW_TEXT_LAST_POST_SUBJECTS', $preview['cleanup']['topic_last_post_subject']),
+				$this->language->lang('CLI_TOPIC_TAGS_REPAIR_PREVIEW_TEXT_FORUM_LAST_POST_SUBJECTS', $preview['cleanup']['forum_last_post_subject'])
 			),
-			$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_PREVIEW_DELETE'),
+			$this->language->lang('CLI_TOPIC_TAGS_REPAIR_PREVIEW_DELETE'),
 		];
 		if ($is_merge && !empty($preview['source']['prefix_enabled']) && empty($preview['targets'][0]['prefix_enabled']))
 		{
-			array_splice($effects, 2, 0, [$this->language->lang('CLI_TOPIC_PREFIXES_REPAIR_MERGE_PREVIEW_ENABLE')]);
+			array_splice($effects, 2, 0, [$this->language->lang('CLI_TOPIC_TAGS_REPAIR_MERGE_PREVIEW_ENABLE')]);
 		}
 		$io->listing($effects);
 	}

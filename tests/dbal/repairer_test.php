@@ -27,7 +27,7 @@ class repairer_test extends tags_base
 	public function test_inspect_rejects_missing_source(): void
 	{
 		$this->expectException(\InvalidArgumentException::class);
-		$this->expectExceptionMessage('CLI_TOPIC_PREFIXES_REPAIR_TAG_NOT_FOUND');
+		$this->expectExceptionMessage('CLI_TOPIC_TAGS_REPAIR_TAG_NOT_FOUND');
 
 		$this->create_repairer()->inspect(999);
 	}
@@ -133,7 +133,7 @@ class repairer_test extends tags_base
 	public function test_explicit_merge_rejects_source_as_target(): void
 	{
 		$this->expectException(\InvalidArgumentException::class);
-		$this->expectExceptionMessage('CLI_TOPIC_PREFIXES_REPAIR_SOURCE_TARGET');
+		$this->expectExceptionMessage('CLI_TOPIC_TAGS_REPAIR_SOURCE_TARGET');
 
 		$this->create_repairer()->preview_merge(1, 1);
 	}
@@ -141,7 +141,7 @@ class repairer_test extends tags_base
 	public function test_explicit_merge_rejects_missing_target(): void
 	{
 		$this->expectException(\InvalidArgumentException::class);
-		$this->expectExceptionMessage('CLI_TOPIC_PREFIXES_REPAIR_MERGE_TARGET_NOT_FOUND');
+		$this->expectExceptionMessage('CLI_TOPIC_TAGS_REPAIR_MERGE_TARGET_NOT_FOUND');
 
 		$this->create_repairer()->preview_merge(1, 999);
 	}
@@ -165,7 +165,7 @@ class repairer_test extends tags_base
 	{
 		$this->db->sql_query("UPDATE phpbb_topic_prefixes SET prefix_tag = '&#128519;' WHERE prefix_id = 3");
 		$this->expectException(\InvalidArgumentException::class);
-		$this->expectExceptionMessage('CLI_TOPIC_PREFIXES_REPAIR_SOURCE_TARGET');
+		$this->expectExceptionMessage('CLI_TOPIC_TAGS_REPAIR_SOURCE_TARGET');
 
 		$this->create_repairer()->preview(3, ['😇']);
 	}
@@ -223,11 +223,11 @@ class repairer_test extends tags_base
 	public function invalid_replacement_provider(): array
 	{
 		return [
-			'none' => [[], 'CLI_TOPIC_PREFIXES_REPAIR_NEW_TAG_REQUIRED'],
-			'empty' => [[''], 'CLI_TOPIC_PREFIXES_REPAIR_INVALID_TAG'],
-			'too long' => [[str_repeat('x', 51)], 'CLI_TOPIC_PREFIXES_REPAIR_INVALID_TAG'],
-			'source' => [['Bug'], 'CLI_TOPIC_PREFIXES_REPAIR_SOURCE_TARGET'],
-			'duplicate' => [['A', 'A'], 'CLI_TOPIC_PREFIXES_REPAIR_DUPLICATE_TAG'],
+			'none' => [[], 'CLI_TOPIC_TAGS_REPAIR_NEW_TAG_REQUIRED'],
+			'empty' => [[''], 'CLI_TOPIC_TAGS_REPAIR_INVALID_TAG'],
+			'too long' => [[str_repeat('x', 51)], 'CLI_TOPIC_TAGS_REPAIR_INVALID_TAG'],
+			'source' => [['Bug'], 'CLI_TOPIC_TAGS_REPAIR_SOURCE_TARGET'],
+			'duplicate' => [['A', 'A'], 'CLI_TOPIC_TAGS_REPAIR_DUPLICATE_TAG'],
 		];
 	}
 
