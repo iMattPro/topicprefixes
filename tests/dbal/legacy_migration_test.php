@@ -160,6 +160,152 @@ class legacy_migration_test extends tags_base
 		$this->db->sql_freeresult($result);
 	}
 
+	public function test_shared_last_post_cleans_each_forum_and_queues_assignment_once()
+	{
+		$this->db->sql_query('DELETE FROM phpbb_topic_prefixes_topics
+			WHERE topic_id = 10 AND prefix_id = 1');
+		$statement = $this->getConnection()->getConnection()->prepare('UPDATE phpbb_forums
+			SET forum_last_post_id = ?, forum_last_post_subject = ?
+			WHERE forum_id = 3');
+		$statement->execute(array($this->post_ids['reply'], 'バグ 返信 subject'));
+
+		$this->create_migration()->migrate_legacy_data();
+
+		self::assertSame(1, (int) $this->field('SELECT COUNT(*) AS total
+			FROM phpbb_topic_prefixes_topics
+			WHERE topic_id = 10 AND prefix_id = 1', 'total'));
+		self::assertSame('返信 subject', $this->field('SELECT forum_last_post_subject
+			FROM phpbb_forums WHERE forum_id = 2', 'forum_last_post_subject'));
+		self::assertSame('返信 subject', $this->field('SELECT forum_last_post_subject
+			FROM phpbb_forums WHERE forum_id = 3', 'forum_last_post_subject'));
+	}
+
+	public function test_existing_standalone_tag_is_reused_by_split_prefix()
+	{
+		$this->reset_legacy_data([
+			['[DEV]', 0, 2],
+			['[3.3][DEV]', 1, 3],
+		], true);
+
+		$this->create_migration()->migrate_legacy_data();
+
+		self::assertSame(['[DEV]', '[3.3]'], $this->tag_names());
+		self::assertSame(1, (int) $this->field("SELECT prefix_id FROM phpbb_topic_prefixes WHERE prefix_tag = '[DEV]'", 'prefix_id'));
+		self::assertSame(1, (int) $this->field("SELECT prefix_enabled FROM phpbb_topic_prefixes WHERE prefix_tag = '[DEV]'", 'prefix_enabled'));
+		self::assertSame(2, (int) $this->field('SELECT COUNT(*) AS total
+			FROM phpbb_topic_prefixes_forums WHERE prefix_id = 1', 'total'));
+		self::assertSame(['[DEV]'], $this->topic_tag_names(100));
+		self::assertSame(['[DEV]', '[3.3]'], $this->topic_tag_names(101));
+	}
+
+	public function test_duplicate_standalone_definitions_remain_distinct()
+	{
+		$this->reset_legacy_data([
+			['[CDB]', 1, 2],
+			['[CDB]', 0, 3],
+		], true);
+
+		$this->create_migration()->migrate_legacy_data();
+
+		self::assertSame(['[CDB]', '[CDB]'], $this->tag_names());
+		self::assertSame(1, (int) $this->field('SELECT prefix_enabled FROM phpbb_topic_prefixes WHERE prefix_id = 1', 'prefix_enabled'));
+		self::assertSame(0, (int) $this->field('SELECT prefix_enabled FROM phpbb_topic_prefixes WHERE prefix_id = 2', 'prefix_enabled'));
+		self::assertSame(1, (int) $this->field('SELECT COUNT(*) AS total
+			FROM phpbb_topic_prefixes_forums WHERE forum_id = 2 AND prefix_id = 1', 'total'));
+		self::assertSame(1, (int) $this->field('SELECT COUNT(*) AS total
+			FROM phpbb_topic_prefixes_forums WHERE forum_id = 3 AND prefix_id = 2', 'total'));
+		self::assertSame(['[CDB]'], $this->topic_tag_names(100));
+		self::assertSame(['[CDB]'], $this->topic_tag_names(101));
+		self::assertSame(1, (int) $this->field('SELECT prefix_id FROM phpbb_topic_prefixes_topics WHERE topic_id = 100', 'prefix_id'));
+		self::assertSame(2, (int) $this->field('SELECT prefix_id FROM phpbb_topic_prefixes_topics WHERE topic_id = 101', 'prefix_id'));
+	}
+
+	public function test_deleted_prefix_references_cannot_attach_to_generated_tags()
+	{
+		$this->reset_legacy_data([['[A][B]', 1, 2]], true);
+		$this->insert_explicit_rows('phpbb_topic_prefixes', [[
+			'prefix_id' => 5,
+			'prefix_tag' => '[A]',
+			'prefix_enabled' => 1,
+			'prefix_parent_id' => 0,
+			'prefix_left_id' => 0,
+			'prefix_right_id' => 0,
+			'prefix_parents' => '',
+			'forum_id' => 0,
+			'prefix_color' => '4A76A8',
+			'prefix_order' => 1,
+		]]);
+		$topics = [];
+		for ($orphan_id = 2; $orphan_id <= 20; $orphan_id++)
+		{
+			$topics[] = [
+				'topic_id' => 200 + $orphan_id,
+				'forum_id' => 2,
+				'topic_title' => 'Orphan topic ' . $orphan_id,
+				'topic_prefix_id' => $orphan_id,
+				'topic_visibility' => ITEM_APPROVED,
+				'topic_type' => POST_NORMAL,
+			];
+		}
+		$this->insert_explicit_rows('phpbb_topics', $topics);
+
+		$this->create_migration()->migrate_legacy_data();
+
+		self::assertSame(0, (int) $this->field('SELECT COUNT(*) AS total
+			FROM phpbb_topic_prefixes_topics
+			WHERE topic_id >= 202 AND topic_id <= 220', 'total'));
+		self::assertSame('Orphan topic 2', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 202', 'topic_title'));
+		$tag_names = $this->topic_tag_names(100);
+		sort($tag_names);
+		self::assertSame(['[A]', '[B]'], $tag_names);
+	}
+
+	public function test_missing_forums_are_not_copied_to_tag_relationships()
+	{
+		$this->reset_legacy_data([
+			['[CDB]', 1, 998],
+			['[A][B]', 1, 999],
+		]);
+
+		$this->create_migration()->migrate_legacy_data();
+
+		self::assertSame(['[CDB]', '[A]', '[B]'], $this->tag_names());
+		self::assertSame(0, (int) $this->field('SELECT COUNT(*) AS total FROM phpbb_topic_prefixes_forums', 'total'));
+	}
+
+	public function test_shared_forum_last_post_is_cleaned_across_topic_batch_boundary()
+	{
+		$this->reset_legacy_data([['[A]', 1, 2]]);
+		$topics = [];
+		for ($offset = 0; $offset < 500; $offset++)
+		{
+			$topics[] = [
+				'topic_id' => 1000 + $offset,
+				'forum_id' => 2,
+				'topic_title' => '[A] Topic ' . $offset,
+				'topic_prefix_id' => 1,
+				'topic_last_post_id' => $offset === 499 ? 9000 : 0,
+				'topic_last_post_subject' => $offset === 499 ? '[A] Boundary subject' : '',
+				'topic_visibility' => ITEM_APPROVED,
+				'topic_type' => POST_NORMAL,
+			];
+		}
+		$this->insert_explicit_rows('phpbb_topics', $topics);
+		$statement = $this->getConnection()->getConnection()->prepare('UPDATE phpbb_forums
+			SET forum_last_post_id = ?, forum_last_post_subject = ?
+			WHERE forum_id IN (2, 3)');
+		$statement->execute(array(9000, '[A] Boundary subject'));
+
+		$this->create_migration()->migrate_legacy_data();
+
+		self::assertSame(500, (int) $this->field('SELECT COUNT(*) AS total FROM phpbb_topic_prefixes_topics', 'total'));
+		self::assertSame('Boundary subject', $this->field('SELECT forum_last_post_subject
+			FROM phpbb_forums WHERE forum_id = 2', 'forum_last_post_subject'));
+		self::assertSame('Boundary subject', $this->field('SELECT forum_last_post_subject
+			FROM phpbb_forums WHERE forum_id = 3', 'forum_last_post_subject'));
+		self::assertSame('Topic 499', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 1499', 'topic_title'));
+	}
+
 	public function test_combined_bracket_prefixes_become_shared_tags()
 	{
 		$definitions = [

@@ -80,14 +80,15 @@ class v200_data extends \phpbb\db\migration\migration
 			'posts' => $this->table_prefix . 'posts',
 		];
 
+		$valid_forum_ids = $this->get_valid_forum_ids($tables['forums']);
 		$this->migrate_tag_definitions($tables['topic_prefixes']);
-		$this->migrate_forum_availability($tables['topic_prefixes'], $tables['topic_prefixes_forums']);
-		list($tag_map, $split_source_ids) = $this->prepare_legacy_tags($tables);
+		$this->migrate_forum_availability($tables['topic_prefixes'], $tables['topic_prefixes_forums'], $valid_forum_ids);
+		list($tag_map, $split_source_ids) = $this->prepare_legacy_tags($tables, $valid_forum_ids);
 
 		$last_topic_id = 0;
-		do
+		while ($tag_map)
 		{
-			$topics = $this->get_legacy_topics($tables, $last_topic_id);
+			$topics = $this->get_legacy_topics($tables, $last_topic_id, array_keys($tag_map));
 			if (!$topics)
 			{
 				break;
@@ -95,10 +96,32 @@ class v200_data extends \phpbb\db\migration\migration
 
 			$last_topic_id = (int) end($topics)['topic_id'];
 			$this->migrate_topic_batch($tables, $topics, $tag_map);
+			if (count($topics) < self::BATCH_SIZE)
+			{
+				break;
+			}
 		}
-		while (count($topics) === self::BATCH_SIZE);
 
 		$this->remove_split_sources($tables, $split_source_ids);
+	}
+
+	/**
+	 * Load existing forum identifiers for relationship validation.
+	 *
+	 * @param string $forums_table Forums table
+	 * @return array Forum identifier lookup
+	 */
+	protected function get_valid_forum_ids(string $forums_table): array
+	{
+		$result = $this->db->sql_query('SELECT forum_id FROM ' . $forums_table);
+		$forum_ids = [];
+		while ($row = $this->db->sql_fetchrow($result))
+		{
+			$forum_ids[(int) $row['forum_id']] = true;
+		}
+		$this->db->sql_freeresult($result);
+
+		return $forum_ids;
 	}
 
 	/**
@@ -120,12 +143,14 @@ class v200_data extends \phpbb\db\migration\migration
 	 * Prepare all legacy prefixes as tags, splitting complete multi-bracket
 	 * sequences when detected. Other prefix formats remain unchanged.
 	 *
-	 * @param array $tables Migration table names
+	 * @param array $tables          Migration table names
+	 * @param array $valid_forum_ids Existing forum identifier lookup
 	 * @return array Source-to-target map and split source identifiers
 	 */
-	protected function prepare_legacy_tags(array $tables): array
+	protected function prepare_legacy_tags(array $tables, array $valid_forum_ids): array
 	{
-		$sql = 'SELECT prefix_id, prefix_tag, prefix_enabled, prefix_order, forum_id
+		$sql = 'SELECT prefix_id, prefix_tag, prefix_enabled, prefix_order, forum_id,
+				prefix_left_id, prefix_right_id
 			FROM ' . $tables['topic_prefixes'] . '
 			ORDER BY prefix_order ASC, prefix_id ASC';
 		$result = $this->db->sql_query($sql);
@@ -133,7 +158,13 @@ class v200_data extends \phpbb\db\migration\migration
 		$known_tags = [];
 		while ($row = $this->db->sql_fetchrow($result))
 		{
-			$sources[] = $row;
+			// Split targets created by an interrupted attempt have no legacy
+			// nested-set position. Keep them available for reuse, but never treat
+			// their identifiers as legacy topic references on retry.
+			if (!empty($row['prefix_left_id']) || !empty($row['prefix_right_id']))
+			{
+				$sources[] = $row;
+			}
 			$key = base64_encode(tag_manager::decode_name($row['prefix_tag']));
 			if (!isset($known_tags[$key]))
 			{
@@ -199,7 +230,7 @@ class v200_data extends \phpbb\db\migration\migration
 
 				$tag_map[$source_id][] = $target_id;
 				$forum_key = (int) $source['forum_id'] . ':' . $target_id;
-				if (!empty($source['forum_id']) && !isset($forum_keys[$forum_key]))
+				if (isset($valid_forum_ids[(int) $source['forum_id']]) && !isset($forum_keys[$forum_key]))
 				{
 					$forum_rows[] = [
 						'forum_id' => (int) $source['forum_id'],
@@ -281,11 +312,12 @@ class v200_data extends \phpbb\db\migration\migration
 	/**
 	 * Copy legacy single-forum values into forum/tag relationships.
 	 *
-	 * @param string $tags_table   Tag definition table
-	 * @param string $forums_table Forum/tag map table
+	 * @param string $tags_table      Tag definition table
+	 * @param string $forums_table    Forum/tag map table
+	 * @param array  $valid_forum_ids Existing forum identifier lookup
 	 * @return void
 	 */
-	protected function migrate_forum_availability(string $tags_table, string $forums_table): void
+	protected function migrate_forum_availability(string $tags_table, string $forums_table, array $valid_forum_ids): void
 	{
 		$sql = 'SELECT p.forum_id, p.prefix_id
 			FROM ' . $tags_table . ' p
@@ -298,6 +330,10 @@ class v200_data extends \phpbb\db\migration\migration
 		$rows = [];
 		while ($row = $this->db->sql_fetchrow($result))
 		{
+			if (!isset($valid_forum_ids[(int) $row['forum_id']]))
+			{
+				continue;
+			}
 			$rows[] = [
 				'forum_id' => (int) $row['forum_id'],
 				'prefix_id' => (int) $row['prefix_id'],
@@ -314,24 +350,23 @@ class v200_data extends \phpbb\db\migration\migration
 	/**
 	 * Load one bounded set of legacy topics and first-post subjects.
 	 *
-	 * @param array $tables        Migration table names
-	 * @param int   $last_topic_id Last processed topic identifier
+	 * @param array $tables            Migration table names
+	 * @param int   $last_topic_id     Last processed topic identifier
+	 * @param array $legacy_prefix_ids Prefix identifiers present before conversion
 	 * @return array Legacy topic rows
 	 */
-	protected function get_legacy_topics(array $tables, int $last_topic_id): array
+	protected function get_legacy_topics(array $tables, int $last_topic_id, array $legacy_prefix_ids): array
 	{
 		$sql = 'SELECT t.topic_id, t.topic_title, t.topic_first_post_id, t.topic_last_post_id,
 				t.topic_last_post_subject, t.topic_moved_id, t.topic_prefix_id, p.prefix_tag,
-				fp.post_subject, f.forum_id AS last_post_forum_id, f.forum_last_post_subject
+				fp.post_subject
 			FROM ' . $tables['topics'] . ' t
 			INNER JOIN ' . $tables['topic_prefixes'] . ' p
 				ON p.prefix_id = t.topic_prefix_id
 			LEFT JOIN ' . $tables['posts'] . ' fp
 				ON fp.post_id = t.topic_first_post_id
-			LEFT JOIN ' . $tables['forums'] . ' f
-				ON t.topic_last_post_id <> 0
-				AND f.forum_last_post_id = t.topic_last_post_id
 			WHERE t.topic_prefix_id <> 0
+				AND ' . $this->db->sql_in_set('t.topic_prefix_id', $legacy_prefix_ids) . '
 				AND t.topic_id > ' . $last_topic_id . '
 			ORDER BY t.topic_id ASC';
 		$result = $this->db->sql_query_limit($sql, self::BATCH_SIZE);
@@ -361,17 +396,18 @@ class v200_data extends \phpbb\db\migration\migration
 		$topic_titles = [];
 		$topic_last_post_subjects = [];
 		$post_subjects = [];
-		$forum_last_post_subjects = [];
+		$forum_last_post_subjects = $this->get_forum_last_post_subject_changes($tables['forums'], $topics);
 
 		foreach ($topics as $topic)
 		{
 			$topic_id = (int) $topic['topic_id'];
 			$source_id = (int) $topic['topic_prefix_id'];
-			foreach ($tag_map[$source_id] ?? [$source_id] as $tag_id)
+			foreach ($tag_map[$source_id] as $tag_id)
 			{
 				if (empty($topic['topic_moved_id']) && empty($existing[$topic_id][$tag_id]))
 				{
 					$assignments[] = ['topic_id' => $topic_id, 'prefix_id' => $tag_id];
+					$existing[$topic_id][$tag_id] = true;
 				}
 			}
 
@@ -398,12 +434,6 @@ class v200_data extends \phpbb\db\migration\migration
 			{
 				$post_subjects[$post_id] = substr($topic['post_subject'], $legacy_length);
 			}
-
-			$forum_id = (int) $topic['last_post_forum_id'];
-			if ($forum_id && $topic['forum_last_post_subject'] !== null && strpos($topic['forum_last_post_subject'], $legacy_text) === 0)
-			{
-				$forum_last_post_subjects[$forum_id] = substr($topic['forum_last_post_subject'], $legacy_length);
-			}
 		}
 
 		$this->db->sql_transaction('begin');
@@ -416,6 +446,61 @@ class v200_data extends \phpbb\db\migration\migration
 		$this->bulk_update_text($tables['posts'], 'post_id', 'post_subject', $post_subjects);
 		$this->bulk_update_text($tables['forums'], 'forum_id', 'forum_last_post_subject', $forum_last_post_subjects);
 		$this->db->sql_transaction('commit');
+	}
+
+	/**
+	 * Build forum last-post subject changes without duplicating paginated topic rows.
+	 *
+	 * @param string $forums_table Forums table
+	 * @param array  $topics       Legacy topic rows
+	 * @return array New subjects keyed by forum identifier
+	 */
+	protected function get_forum_last_post_subject_changes(string $forums_table, array $topics): array
+	{
+		$prefixes_by_post = [];
+		foreach ($topics as $topic)
+		{
+			$post_id = (int) $topic['topic_last_post_id'];
+			$legacy_text = $topic['prefix_tag'] . ' ';
+			if ($post_id && $legacy_text !== ' ')
+			{
+				$prefixes_by_post[$post_id][$legacy_text] = true;
+			}
+		}
+
+		if (!$prefixes_by_post)
+		{
+			return [];
+		}
+
+		$sql = 'SELECT forum_id, forum_last_post_id, forum_last_post_subject
+			FROM ' . $forums_table . '
+			WHERE ' . $this->db->sql_in_set('forum_last_post_id', array_keys($prefixes_by_post));
+		$result = $this->db->sql_query($sql);
+		$changes = [];
+		while ($row = $this->db->sql_fetchrow($result))
+		{
+			if ($row['forum_last_post_subject'] === null)
+			{
+				continue;
+			}
+
+			$prefixes = array_keys($prefixes_by_post[(int) $row['forum_last_post_id']]);
+			usort($prefixes, static function ($left, $right) {
+				return strlen($right) <=> strlen($left);
+			});
+			foreach ($prefixes as $legacy_text)
+			{
+				if (strpos($row['forum_last_post_subject'], $legacy_text) === 0)
+				{
+					$changes[(int) $row['forum_id']] = substr($row['forum_last_post_subject'], strlen($legacy_text));
+					break;
+				}
+			}
+		}
+		$this->db->sql_freeresult($result);
+
+		return $changes;
 	}
 
 	/**
