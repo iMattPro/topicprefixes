@@ -180,7 +180,7 @@ class legacy_migration_test extends tags_base
 			FROM phpbb_forums WHERE forum_id = 3', 'forum_last_post_subject'));
 	}
 
-	public function test_existing_standalone_tag_is_reused_by_split_prefix()
+	public function test_split_prefix_does_not_reuse_standalone_tag_with_different_state()
 	{
 		$this->reset_legacy_data([
 			['[DEV]', 0, 2],
@@ -189,16 +189,25 @@ class legacy_migration_test extends tags_base
 
 		$this->create_migration()->migrate_legacy_data();
 
-		self::assertSame(['[DEV]', '[3.3]'], $this->tag_names());
-		self::assertSame(1, (int) $this->field("SELECT prefix_id FROM phpbb_topic_prefixes WHERE prefix_tag = '[DEV]'", 'prefix_id'));
-		self::assertSame(1, (int) $this->field("SELECT prefix_enabled FROM phpbb_topic_prefixes WHERE prefix_tag = '[DEV]'", 'prefix_enabled'));
-		self::assertSame(2, (int) $this->field('SELECT COUNT(*) AS total
+		self::assertSame(['[DEV]', '[3.3]', '[DEV]'], $this->tag_names());
+		self::assertSame(1, (int) $this->field("SELECT MIN(prefix_id) AS prefix_id
+			FROM phpbb_topic_prefixes WHERE prefix_tag = '[DEV]'", 'prefix_id'));
+		self::assertSame(2, (int) $this->field("SELECT COUNT(*) AS total FROM phpbb_topic_prefixes WHERE prefix_tag = '[DEV]'", 'total'));
+		self::assertSame(1, (int) $this->field("SELECT COUNT(*) AS total FROM phpbb_topic_prefixes
+			WHERE prefix_tag = '[DEV]' AND prefix_enabled = 0", 'total'));
+		self::assertSame(1, (int) $this->field("SELECT COUNT(*) AS total FROM phpbb_topic_prefixes
+			WHERE prefix_tag = '[DEV]' AND prefix_enabled = 1", 'total'));
+		self::assertSame(1, (int) $this->field('SELECT COUNT(*) AS total
 			FROM phpbb_topic_prefixes_forums WHERE prefix_id = 1', 'total'));
 		self::assertSame(['[DEV]'], $this->topic_tag_names(100));
-		self::assertSame(['[DEV]', '[3.3]'], $this->topic_tag_names(101));
+		self::assertSame(['[3.3]', '[DEV]'], $this->topic_tag_names(101));
+		self::assertSame(1, (int) $this->field("SELECT COUNT(*) AS total
+			FROM phpbb_topic_prefixes_topics pt
+			INNER JOIN phpbb_topic_prefixes p ON p.prefix_id = pt.prefix_id
+			WHERE pt.topic_id = 101 AND p.prefix_tag = '[DEV]' AND p.prefix_enabled = 1", 'total'));
 	}
 
-	public function test_duplicate_standalone_definitions_remain_distinct()
+	public function test_duplicate_standalone_definitions_with_different_states_remain_distinct()
 	{
 		$this->reset_legacy_data([
 			['[CDB]', 1, 2],
@@ -218,6 +227,46 @@ class legacy_migration_test extends tags_base
 		self::assertSame(['[CDB]'], $this->topic_tag_names(101));
 		self::assertSame(1, (int) $this->field('SELECT prefix_id FROM phpbb_topic_prefixes_topics WHERE topic_id = 100', 'prefix_id'));
 		self::assertSame(2, (int) $this->field('SELECT prefix_id FROM phpbb_topic_prefixes_topics WHERE topic_id = 101', 'prefix_id'));
+	}
+
+	public function test_duplicate_standalone_definitions_with_same_state_are_consolidated()
+	{
+		$this->reset_legacy_data([
+			['[CDB]', 1, 2],
+			['[CDB]', 1, 3],
+		], true);
+
+		$migration = $this->create_migration();
+		$migration->migrate_legacy_data();
+		$migration->migrate_legacy_data();
+
+		self::assertSame(['[CDB]'], $this->tag_names());
+		self::assertSame(1, (int) $this->field("SELECT prefix_id FROM phpbb_topic_prefixes WHERE prefix_tag = '[CDB]'", 'prefix_id'));
+		self::assertSame(0, (int) $this->field('SELECT COUNT(*) AS total
+			FROM phpbb_topic_prefixes WHERE prefix_id = 2', 'total'));
+		self::assertSame(2, (int) $this->field('SELECT COUNT(*) AS total
+			FROM phpbb_topic_prefixes_forums WHERE prefix_id = 1', 'total'));
+		self::assertSame(2, (int) $this->field('SELECT COUNT(*) AS total
+			FROM phpbb_topic_prefixes_topics WHERE prefix_id = 1 AND topic_id IN (100, 101)', 'total'));
+		self::assertSame('Topic 1', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 100', 'topic_title'));
+		self::assertSame('Topic 2', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 101', 'topic_title'));
+		self::assertSame('Topic 1', $this->field('SELECT post_subject FROM phpbb_posts WHERE post_id = 1000', 'post_subject'));
+		self::assertSame('Topic 2', $this->field('SELECT post_subject FROM phpbb_posts WHERE post_id = 1001', 'post_subject'));
+	}
+
+	public function test_duplicate_standalone_definitions_in_same_forum_are_consolidated()
+	{
+		$this->reset_legacy_data([
+			['[CDB]', 1, 2],
+			['[CDB]', 1, 2],
+		], true);
+
+		$this->create_migration()->migrate_legacy_data();
+
+		self::assertSame(['[CDB]'], $this->tag_names());
+		self::assertSame(1, (int) $this->field('SELECT COUNT(*) AS total FROM phpbb_topic_prefixes_forums', 'total'));
+		self::assertSame(2, (int) $this->field('SELECT COUNT(*) AS total
+			FROM phpbb_topic_prefixes_topics WHERE prefix_id = 1', 'total'));
 	}
 
 	public function test_deleted_prefix_references_cannot_attach_to_generated_tags()
@@ -306,6 +355,48 @@ class legacy_migration_test extends tags_base
 		self::assertSame('Topic 499', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 1499', 'topic_title'));
 	}
 
+	public function test_duplicate_standalone_and_combined_definitions_become_shared_tags()
+	{
+		$this->reset_legacy_data([
+			['[3.3][RC]', 1, 3],
+			['[3.3][CDB]', 1, 3],
+			['[CDB]', 1, 3],
+			['[CDB]', 1, 2],
+			['[3.3][RC]', 1, 2],
+			['[3.3][CDB]', 1, 2],
+		], true);
+
+		$migration = $this->create_migration();
+		$migration->migrate_legacy_data();
+		$migration->migrate_legacy_data();
+
+		$expected = ['[CDB]', '[3.3]', '[RC]'];
+		$actual = $this->tag_names();
+		sort($expected);
+		sort($actual);
+		self::assertSame($expected, $actual);
+		self::assertSame(3, (int) $this->field("SELECT prefix_id FROM phpbb_topic_prefixes WHERE prefix_tag = '[CDB]'", 'prefix_id'));
+		foreach (['[CDB]', '[3.3]', '[RC]'] as $name)
+		{
+			self::assertSame(2, (int) $this->field("SELECT COUNT(*) AS total
+				FROM phpbb_topic_prefixes_forums pf
+				INNER JOIN phpbb_topic_prefixes p ON p.prefix_id = pf.prefix_id
+				WHERE p.prefix_tag = '" . $this->db->sql_escape($name) . "'", 'total'));
+		}
+		self::assertSame(['[3.3]', '[RC]'], $this->topic_tag_names(100));
+		self::assertSame(['[3.3]', '[CDB]'], $this->topic_tag_names(101));
+		self::assertSame(['[CDB]'], $this->topic_tag_names(102));
+		self::assertSame(['[CDB]'], $this->topic_tag_names(103));
+		self::assertSame(['[3.3]', '[RC]'], $this->topic_tag_names(104));
+		self::assertSame(['[3.3]', '[CDB]'], $this->topic_tag_names(105));
+		self::assertSame(10, (int) $this->field('SELECT COUNT(*) AS total FROM phpbb_topic_prefixes_topics', 'total'));
+		for ($topic_id = 100; $topic_id <= 105; $topic_id++)
+		{
+			self::assertSame('Topic ' . ($topic_id - 99), $this->field('SELECT topic_title
+				FROM phpbb_topics WHERE topic_id = ' . $topic_id, 'topic_title'));
+		}
+	}
+
 	public function test_combined_bracket_prefixes_become_shared_tags()
 	{
 		$definitions = [
@@ -325,12 +416,16 @@ class legacy_migration_test extends tags_base
 		$migration->migrate_legacy_data();
 		$migration->migrate_legacy_data();
 
-		self::assertSame(['[3.3]', '[DEV]', '[ALPHA]', '[BETA]', '[RC]', '[CDB]', '[4.0]'], $this->tag_names());
+		self::assertSame(['[3.3]', '[DEV]', '[3.3]', '[ALPHA]', '[BETA]', '[RC]', '[CDB]', '[4.0]', '[DEV]'], $this->tag_names());
 		self::assertSame(['[3.3]', '[DEV]'], $this->topic_tag_names(100));
 		self::assertSame(['[CDB]'], $this->topic_tag_names(104));
-		self::assertSame(['[DEV]', '[4.0]'], $this->topic_tag_names(105));
+		self::assertSame(['[4.0]', '[DEV]'], $this->topic_tag_names(105));
 		self::assertSame(17, (int) $this->field('SELECT COUNT(*) AS total FROM phpbb_topic_prefixes_topics', 'total'));
-		self::assertSame(1, (int) $this->field("SELECT prefix_enabled FROM phpbb_topic_prefixes WHERE prefix_tag = '[DEV]'", 'prefix_enabled'));
+		self::assertSame(2, (int) $this->field("SELECT COUNT(*) AS total FROM phpbb_topic_prefixes WHERE prefix_tag = '[DEV]'", 'total'));
+		self::assertSame(1, (int) $this->field("SELECT COUNT(*) AS total FROM phpbb_topic_prefixes
+			WHERE prefix_tag = '[DEV]' AND prefix_enabled = 0", 'total'));
+		self::assertSame(1, (int) $this->field("SELECT COUNT(*) AS total FROM phpbb_topic_prefixes
+			WHERE prefix_tag = '[DEV]' AND prefix_enabled = 1", 'total'));
 		self::assertSame(2, (int) $this->field("SELECT COUNT(*) AS total
 			FROM phpbb_topic_prefixes_forums pf
 			INNER JOIN phpbb_topic_prefixes p ON p.prefix_id = pf.prefix_id
