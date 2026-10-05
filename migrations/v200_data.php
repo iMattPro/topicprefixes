@@ -117,7 +117,8 @@ class v200_data extends \phpbb\db\migration\migration
 	}
 
 	/**
-	 * Create individual tags for bracketed legacy prefixes.
+	 * Prepare all legacy prefixes as tags, splitting complete multi-bracket
+	 * sequences when detected. Other prefix formats remain unchanged.
 	 *
 	 * @param array $tables Migration table names
 	 * @return array Source-to-target map and split source identifiers
@@ -218,7 +219,8 @@ class v200_data extends \phpbb\db\migration\migration
 	}
 
 	/**
-	 * Split a complete sequence containing multiple bracketed labels.
+	 * Split a complete, uninterrupted sequence containing at least two
+	 * bracketed labels. Brackets remain part of each resulting tag name.
 	 *
 	 * Mixed, empty, or invalid values remain unchanged.
 	 *
@@ -254,7 +256,7 @@ class v200_data extends \phpbb\db\migration\migration
 	}
 
 	/**
-	 * Remove obsolete combined-prefix definitions after all topics are mapped.
+	 * Remove obsolete multi-bracket source definitions after all topics are mapped.
 	 *
 	 * @param array $tables     Migration table names
 	 * @param array $source_ids Split legacy tag identifiers
