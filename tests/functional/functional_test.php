@@ -358,7 +358,6 @@ class functional_test extends \phpbb_functional_test_case
 	 */
 	public function test_ucp_subscribed_topics_display_tags($fixture)
 	{
-		$this->markTestSkipped('Requires topiclist_row_prepend to be added to phpBB core ucp_main_subscribed.html.');
 		$this->login();
 		$this->get_db();
 		$this->db->sql_query('DELETE FROM phpbb_topics_watch
@@ -378,7 +377,6 @@ class functional_test extends \phpbb_functional_test_case
 	 */
 	public function test_ucp_bookmarks_display_tags($fixture)
 	{
-		$this->markTestSkipped('Requires topiclist_row_prepend to be added to phpBB core ucp_main_bookmarks.html.');
 		$this->login();
 		$this->get_db();
 		$this->db->sql_query('DELETE FROM phpbb_bookmarks
@@ -397,7 +395,6 @@ class functional_test extends \phpbb_functional_test_case
 	 */
 	public function test_ucp_front_displays_tags($fixture)
 	{
-		$this->markTestSkipped('Requires topiclist_row_prepend to be added to phpBB core ucp_main_front.html.');
 		$this->login();
 		$this->get_db();
 		$this->db->sql_query('UPDATE phpbb_topics
