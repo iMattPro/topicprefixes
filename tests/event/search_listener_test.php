@@ -146,8 +146,7 @@ class search_listener_test extends \phpbb_test_case
 		]);
 		$assignments->expects(self::once())->method('get_tags_for_topics')->with([42])->willReturn([42 => [1 => $tag]]);
 		$template->expects(self::once())->method('assign_vars')->with(self::callback(static function ($vars) {
-			return $vars['S_SEARCH_TOPIC_TAG_FILTERS'] === true
-				&& $vars['S_SEARCH_TOPIC_TAG_FILTERED'] === true
+			return $vars['S_SEARCH_TOPIC_TAG_FILTERED'] === true
 				&& $vars['U_CLEAR_SEARCH_TOPIC_TAG_FILTERS'] === './search.php?sr=topics';
 		}));
 		$language->expects(self::once())->method('add_lang')->with('topic_prefixes', 'phpbb/topicprefixes');
@@ -188,6 +187,55 @@ class search_listener_test extends \phpbb_test_case
 		]);
 		$listener->add_search_tags($row);
 		self::assertSame('', $row['tpl_ary']['TOPIC_TAGS'][0]['U_FILTER']);
+	}
+
+	public function test_filterable_search_without_selection_keeps_panel_inactive(): void
+	{
+		list($listener, $manager, $assignments, $filter, $renderer, $request, $template) = $this->listener();
+		$request->method('variable')->with('tags', '')->willReturn('');
+		$manager->expects(self::never())->method('get_tags_by_ids');
+		$renderer->method('url_with_tags')->willReturn('./search.php?sr=topics');
+		$renderer->expects(self::once())->method('render_for_url')->with([], './search.php?sr=topics', [])->willReturn([]);
+		$assignments->method('get_tags_for_topics')->willReturn([42 => [1 => ['prefix_id' => 1]]]);
+		$template->expects(self::once())->method('assign_vars')->with(self::callback(static function ($vars) {
+			return $vars['S_SEARCH_TOPIC_TAG_FILTERED'] === false;
+		}));
+
+		$listener->filter_backend(new \phpbb\event\data([
+			'type' => 'topics', 'post_visibility' => 'VISIBLE', 'search_key_array' => [],
+		]));
+		$listener->preserve_filter_url(new \phpbb\event\data([
+			'u_search' => './search.php?sr=topics', 'show_results' => 'topics',
+		]));
+		$listener->load_search_tags(new \phpbb\event\data([
+			'rowset' => [['topic_id' => 42]], 'show_results' => 'topics',
+		]));
+	}
+
+	public function test_filtered_empty_search_keeps_clear_action(): void
+	{
+		list($listener, $manager, $assignments, $filter, $renderer, $request, $template) = $this->listener();
+		$request->method('variable')->with('tags', '')->willReturn('1');
+		$manager->method('get_tags_by_ids')->willReturn([1 => ['prefix_id' => 1]]);
+		$filter->method('topic_id_condition')->willReturn('TAG_CONDITION');
+		$renderer->method('url_with_tags')->willReturn('./search.php?sr=topics&amp;tags=1');
+		$renderer->expects(self::once())->method('render_for_url')->with([], './search.php?sr=topics', [1])->willReturn([]);
+		$assignments->method('get_tags_for_topics')->with([])->willReturn([]);
+		$template->expects(self::once())->method('assign_vars')->with(self::callback(static function ($vars) {
+			return $vars['S_SEARCH_TOPIC_TAG_FILTERED'] === true
+				&& $vars['SEARCH_TOPIC_TAG_FILTERS'] === []
+				&& $vars['U_CLEAR_SEARCH_TOPIC_TAG_FILTERS'] === './search.php?sr=topics';
+		}));
+
+		$listener->filter_backend(new \phpbb\event\data([
+			'type' => 'topics', 'post_visibility' => 'VISIBLE', 'search_key_array' => [],
+		]));
+		$listener->preserve_filter_url(new \phpbb\event\data([
+			'u_search' => './search.php?sr=topics', 'show_results' => 'topics',
+		]));
+		$listener->load_search_tags(new \phpbb\event\data([
+			'rowset' => [], 'show_results' => 'topics',
+		]));
 	}
 
 	protected function listener(): array

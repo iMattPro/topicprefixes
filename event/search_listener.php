@@ -218,7 +218,6 @@ class search_listener implements EventSubscriberInterface
 		$selected_ids = $this->get_selected_ids();
 		$selected_tags = array_intersect_key($visible_tags, array_fill_keys($selected_ids, true));
 		$this->template->assign_vars([
-			'S_SEARCH_TOPIC_TAG_FILTERS' => !empty($selected_tags),
 			'S_SEARCH_TOPIC_TAG_FILTERED' => !empty($selected_ids),
 			'SEARCH_TOPIC_TAG_FILTERS' => $this->renderer->render_for_url($selected_tags, $this->filter_url, $selected_ids),
 			'U_CLEAR_SEARCH_TOPIC_TAG_FILTERS' => $this->filter_url,
