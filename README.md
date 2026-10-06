@@ -11,7 +11,8 @@ The phpBB Topic Tags extension provides administrator-curated topic tags. Tags a
 - Make each tag available in one or more forums.
 - Assign multiple tags while creating a topic or editing its first post.
 - Display readable colored badges in topic lists, topic pages, and search results.
-- Filter topic lists within individual forums by one or more tags using AND semantics.
+- Filter forum and category Active Topics lists by one or more tags using AND semantics.
+- Filter keyword and author search results shown as topics or posts when using phpBB native, MySQL fulltext, or PostgreSQL search; Sphinx search remains display-only.
 - Upgrade existing title prefixes safely into relational tag assignments.
 - This is the same extension currently in use at phpbb.com in the Extensions and Styles in development forums.
 

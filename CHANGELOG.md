@@ -6,7 +6,7 @@
 - Added multiple color-coded tags per topic with automatic badge text contrast and badges throughout forum, topic, MCP, and search displays.
 - Added centralized ACP management for tag text, color, order, status, and availability across multiple forums.
 - Added accessible tag selection when creating topics or editing their first posts.
-- Added clickable forum filters that can combine multiple tags using AND matching (only in forum view lists).
+- Added clickable filters that combine multiple tags using AND matching in forum lists, category Active Topics, and SQL-backed keyword or author search results shown as topics or posts.
 - Preserved tags through topic moves, splits, forks, and merges, including tags retained after moving into forums where they are unavailable for new assignments.
 - Added a safe, restartable upgrade that converts legacy prefixes and assignments into tags while removing matching prefix text from topic titles and first-post subjects.
 - Added automatic splitting of complete adjacent bracket sequences and consolidation of duplicate legacy definitions with matching names and enabled states, while preserving malformed formats and same-name definitions with conflicting states.

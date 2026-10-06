@@ -274,7 +274,7 @@ class functional_test extends \phpbb_functional_test_case
 	/**
 	 * @depends test_first_post_edit_updates_tag_assignments
 	 */
-	public function test_active_topics_displays_tags_without_filter_links($fixture)
+	public function test_active_topics_filters_with_visible_tag_links($fixture)
 	{
 		$this->login();
 		$this->get_db();
@@ -301,9 +301,8 @@ class functional_test extends \phpbb_functional_test_case
 			$topic_list = $crawler->filter('ul.topiclist.topics');
 			self::assertStringContainsString('Structured tag title', $topic_list->text());
 			self::assertStringContainsString('PHP 8.4 filter', $topic_list->text());
-			self::assertCount(0, $topic_list->filter('a.topic-tag'));
-			self::assertGreaterThanOrEqual(1, $topic_list->filter('span.topic-tag')->count());
-			self::assertCount(0, $crawler->filter('.topic-tag-filter-panel'));
+			self::assertGreaterThanOrEqual(1, $topic_list->filter('a.topic-tag')->count());
+			self::assertCount(1, $crawler->filter('.topic-tag-filter-panel .topic-tag-selected'));
 		}
 		finally
 		{
@@ -319,11 +318,17 @@ class functional_test extends \phpbb_functional_test_case
 	/**
 	 * @depends test_first_post_edit_updates_tag_assignments
 	 */
-	public function test_search_topic_results_display_tags($fixture)
+	public function test_search_topic_results_filter_with_visible_tag_links($fixture)
 	{
 		$this->login();
-		$crawler = self::request('GET', 'search.php?author_id=2&sr=topics' . "&sid={$this->sid}");
+		$crawler = self::request('GET', 'search.php?author_id=2&sr=topics&tags=' . $fixture['php_id'] . "&sid={$this->sid}");
 		self::assertStringContainsString('PHP 8.4 filter', $crawler->filter('ul.topiclist .topic-tag')->text());
+		self::assertGreaterThanOrEqual(1, $crawler->filter('ul.topiclist a.topic-tag')->count());
+		self::assertCount(1, $crawler->filter('.topic-tag-filter-panel .topic-tag-selected'));
+
+		$crawler = self::request('GET', 'search.php?keywords=Structured&sr=topics&tags=' . $fixture['php_id'] . "&sid={$this->sid}");
+		self::assertStringContainsString('Structured tag title', $crawler->filter('ul.topiclist.topics')->text());
+		self::assertCount(1, $crawler->filter('.topic-tag-filter-panel .topic-tag-selected'));
 	}
 
 	/**
@@ -331,10 +336,11 @@ class functional_test extends \phpbb_functional_test_case
 	 */
 	public function test_search_post_results_display_tags($fixture)
 	{
-		$this->markTestSkipped('Requires search_results_topic_title_prepend to be added to phpBB core.');
 		$this->login();
-		$crawler = self::request('GET', 'search.php?author_id=2&sr=posts' . "&sid={$this->sid}");
+		$crawler = self::request('GET', 'search.php?author_id=2&sr=posts&tags=' . $fixture['php_id'] . "&sid={$this->sid}");
 		self::assertStringContainsString('PHP 8.4 filter', $crawler->filter('.postprofile .topic-tag')->text());
+		self::assertGreaterThanOrEqual(1, $crawler->filter('.postprofile a.topic-tag')->count());
+		self::assertCount(1, $crawler->filter('.topic-tag-filter-panel .topic-tag-selected'));
 	}
 
 	/**

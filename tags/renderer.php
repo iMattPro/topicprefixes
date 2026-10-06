@@ -89,6 +89,66 @@ class renderer
 	}
 
 	/**
+	 * Render tags with toggle links based on an arbitrary topic-list URL.
+	 *
+	 * Used by cross-forum lists where forum availability and retained status do
+	 * not have one meaningful forum context.
+	 *
+	 * @param array  $tags         Tag records
+	 * @param string $base_url     URL without a tags parameter
+	 * @param array  $selected_ids Selected filter identifiers
+	 * @param bool   $toggle       Toggle selected IDs in generated URLs
+	 * @return array Template tag rows
+	 */
+	public function render_for_url(array $tags, string $base_url, array $selected_ids = [], bool $toggle = true): array
+	{
+		$selected_ids = array_values(array_unique(array_filter(array_map('intval', $selected_ids))));
+		$selected = array_fill_keys($selected_ids, true);
+		$rendered = $this->render($tags);
+
+		foreach ($rendered as &$row)
+		{
+			$tag_id = (int) $row['TAG_ID'];
+			$link_ids = $selected_ids;
+			if ($toggle && isset($selected[$tag_id]))
+			{
+				$link_ids = array_values(array_diff($link_ids, [$tag_id]));
+			}
+			else if (!isset($selected[$tag_id]))
+			{
+				$link_ids[] = $tag_id;
+			}
+
+			$row['S_SELECTED'] = isset($selected[$tag_id]);
+			$row['S_RETAINED'] = false;
+			$row['U_FILTER'] = $this->url_with_tags($base_url, $link_ids);
+		}
+		unset($row);
+
+		return $rendered;
+	}
+
+	/**
+	 * Add normalized tag IDs to a URL.
+	 *
+	 * @param string $base_url URL without a tags parameter
+	 * @param array  $tag_ids  Tag identifiers
+	 * @return string Filter URL
+	 */
+	public function url_with_tags(string $base_url, array $tag_ids): string
+	{
+		$tag_ids = array_values(array_unique(array_filter(array_map('intval', $tag_ids))));
+		sort($tag_ids, SORT_NUMERIC);
+		if (!$tag_ids)
+		{
+			return $base_url;
+		}
+
+		$delimiter = strpos($base_url, '?') === false ? '?' : '&amp;';
+		return $base_url . $delimiter . 'tags=' . rawurlencode(implode(',', $tag_ids));
+	}
+
+	/**
 	 * Get enabled tag IDs available for new assignments in one forum.
 	 *
 	 * @param int $forum_id Forum identifier

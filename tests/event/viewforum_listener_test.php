@@ -122,9 +122,9 @@ class viewforum_listener_test extends \phpbb_test_case
 	}
 
 	/**
-	 * Active Topics aggregate lists display tags without offering invalid filters.
+	 * Active Topics filters only existing visible rows and renders safe links.
 	 */
-	public function test_active_topics_tags_are_display_only(): void
+	public function test_active_topics_tags_are_filterable(): void
 	{
 		$manager = $this->getMockBuilder('\phpbb\topicprefixes\tags\manager')->disableOriginalConstructor()->getMock();
 		$assignments = $this->getMockBuilder('\phpbb\topicprefixes\tags\assignment_manager')->disableOriginalConstructor()->getMock();
@@ -140,23 +140,17 @@ class viewforum_listener_test extends \phpbb_test_case
 			'prefix_enabled' => 1,
 			'prefix_order' => 1,
 		));
-		$rendered = array(array('TAG_ID' => 1, 'TAG_NAME' => 'Child forum tag', 'U_FILTER' => ''));
+		$rendered = array(array('TAG_ID' => 1, 'TAG_NAME' => 'Child forum tag', 'U_FILTER' => './viewforum.php?f=1'));
 
-		$manager->expects(self::never())->method('get_available_tags');
-		$manager->expects(self::never())->method('get_unavailable_tag_ids');
-		$manager->expects(self::never())->method('get_tags_by_ids');
-		$request->expects(self::never())->method('variable');
+		$manager->expects(self::once())->method('get_tags_by_ids')->with(array(1))->willReturn($tags);
+		$request->method('variable')->with('tags', '')->willReturn('1');
 		$filter->expects(self::never())->method('get_visible_tag_ids_for_forum');
 		$filter->expects(self::never())->method('count_topics');
-		$filter->expects(self::never())->method('condition');
-		$template->expects(self::once())->method('assign_vars')->with(array(
-			'S_TOPIC_TAG_FILTERS' => false,
-			'TOPIC_TAG_FILTERS' => array(),
-			'S_TOPIC_TAG_FILTERED' => false,
-		));
+		$filter->expects(self::once())->method('condition')->with('t', array(1))->willReturn('FILTER_CONDITION');
 		$assignments->expects(self::once())->method('get_tags_for_topics')->with(array(10))->willReturn(array(10 => $tags));
-		$renderer->expects(self::once())->method('render')->with($tags)->willReturn($rendered);
-		$renderer->expects(self::never())->method('filter_url');
+		$renderer->method('filter_url')->willReturn('./viewforum.php?f=1');
+		$renderer->method('url_with_tags')->willReturn('./viewforum.php?f=1&amp;tags=1');
+		$renderer->expects(self::exactly(2))->method('render_for_url')->with($tags, './viewforum.php?f=1', array(1))->willReturn($rendered);
 
 		$listener = new \phpbb\topicprefixes\event\viewforum_listener(
 			$manager, $assignments, $filter, $renderer, $request, $template, $language
@@ -173,7 +167,7 @@ class viewforum_listener_test extends \phpbb_test_case
 
 		$ids = new \phpbb\event\data(array('sql_ary' => array('WHERE' => 't.forum_id IN (2, 3)')));
 		$listener->filter_topic_ids($ids);
-		self::assertSame('t.forum_id IN (2, 3)', $ids['sql_ary']['WHERE']);
+		self::assertSame('t.forum_id IN (2, 3) AND FILTER_CONDITION', $ids['sql_ary']['WHERE']);
 		self::assertSame(20, $config['topics_count']);
 
 		$listener->load_topic_tags(new \phpbb\event\data(array(
@@ -188,7 +182,7 @@ class viewforum_listener_test extends \phpbb_test_case
 
 		$page = new \phpbb\event\data(array('base_url' => './viewforum.php?f=1'));
 		$listener->preserve_pagination_filter($page);
-		self::assertSame('./viewforum.php?f=1', $page['base_url']);
+		self::assertSame('./viewforum.php?f=1&amp;tags=1', $page['base_url']);
 	}
 
 	/**

@@ -37,6 +37,19 @@ services:
         tags:
             - { name: event.listener }
 
+    phpbb.topicprefixes.search_listener:
+        class: phpbb\topicprefixes\event\search_listener
+        arguments:
+            - '@phpbb.topicprefixes.tags.manager'
+            - '@phpbb.topicprefixes.tags.assignment_manager'
+            - '@phpbb.topicprefixes.tags.filter'
+            - '@phpbb.topicprefixes.tags.renderer'
+            - '@request'
+            - '@template'
+            - '@language'
+        tags:
+            - { name: event.listener }
+
     phpbb.topicprefixes.lifecycle_listener:
         class: phpbb\topicprefixes\event\lifecycle_listener
         arguments:

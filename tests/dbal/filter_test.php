@@ -59,6 +59,15 @@ class filter_test extends tags_base
 		self::assertSame(array(10), $this->query_ids(array(1, 2)));
 	}
 
+	public function test_topic_id_expression_condition_uses_and_semantics(): void
+	{
+		$condition = $this->create_filter()->topic_id_condition('p.topic_id', [1, 2]);
+
+		self::assertStringStartsWith('p.topic_id IN', $condition);
+		self::assertStringContainsString('GROUP BY tpf.topic_id', $condition);
+		self::assertStringContainsString('HAVING COUNT(tpf.prefix_id) = 2', $condition);
+	}
+
 	/**
 	 * Test filtered count matches result rows.
 	 */

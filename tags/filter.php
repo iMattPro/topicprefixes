@@ -183,17 +183,31 @@ class filter
 	 */
 	public function condition(string $topic_alias, array $tag_ids): string
 	{
-		$tag_ids = array_values(array_unique(array_filter(array_map('intval', $tag_ids))));
-		if (!$tag_ids)
-		{
-			return '1=1';
-		}
-
 		$topic_id = $this->db->sql_case(
 			$topic_alias . '.topic_moved_id <> 0',
 			$topic_alias . '.topic_moved_id',
 			$topic_alias . '.topic_id'
 		);
+		return $this->topic_id_condition($topic_id, $tag_ids);
+	}
+
+	/**
+	 * Build SQL condition requiring every selected tag for a topic ID expression.
+	 *
+	 * Search backends operate on posts before loading topic rows, so callers can
+	 * use p.topic_id without weakening phpBB's existing visibility condition.
+	 *
+	 * @param string $topic_id Topic ID SQL expression
+	 * @param array  $tag_ids  Selected tag identifiers
+	 * @return string SQL condition
+	 */
+	public function topic_id_condition(string $topic_id, array $tag_ids): string
+	{
+		$tag_ids = array_values(array_unique(array_filter(array_map('intval', $tag_ids))));
+		if (!$tag_ids)
+		{
+			return '1=1';
+		}
 
 		$subquery = 'SELECT tpf.topic_id
 			FROM ' . $this->topic_map_table . ' tpf

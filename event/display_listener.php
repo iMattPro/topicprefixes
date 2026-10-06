@@ -40,9 +40,6 @@ class display_listener implements EventSubscriberInterface
 	/** @var bool Whether extension language has been loaded */
 	protected $language_loaded = false;
 
-	/** @var array Tags grouped by search result topic */
-	protected $search_tags = [];
-
 	/** @var array Tags grouped by MCP topic */
 	protected $mcp_tags = [];
 
@@ -77,8 +74,6 @@ class display_listener implements EventSubscriberInterface
 	{
 		return [
 			'core.viewtopic_assign_template_vars_before' => 'add_viewtopic_tags',
-			'core.search_modify_rowset' => 'load_search_tags',
-			'core.search_modify_tpl_ary' => 'add_search_tags',
 			'core.mcp_forum_topic_data_modify_sql' => 'load_mcp_tags',
 			'core.mcp_view_forum_modify_topicrow' => 'add_mcp_tags',
 			'core.ucp_main_front_modify_topic_data' => 'load_ucp_tags', // event coming soon to phpBB 3.3.18/19
@@ -104,38 +99,6 @@ class display_listener implements EventSubscriberInterface
 			'topic_tags',
 			$this->renderer->render($topic_tags, (int) $event['forum_id'])
 		);
-	}
-
-	/**
-	 * Batch-load tags for search result topics.
-	 *
-	 * @param \phpbb\event\data $event Event data
-	 * @return void
-	 */
-	public function load_search_tags($event): void
-	{
-		$topic_ids = [];
-		foreach ($event['rowset'] as $row)
-		{
-			$topic_ids[] = (int) $row['topic_id'];
-		}
-		$this->search_tags = $this->assignments->get_tags_for_topics($topic_ids);
-	}
-
-	/**
-	 * Add tag badge data to one search result row.
-	 *
-	 * @param \phpbb\event\data $event Event data
-	 * @return void
-	 */
-	public function add_search_tags($event): void
-	{
-		$this->load_language();
-		$topic_id = (int) $event['row']['topic_id'];
-		$tags = $this->search_tags[$topic_id] ?? [];
-		$tpl = $event['tpl_ary'];
-		$tpl['TOPIC_TAGS'] = $this->renderer->render($tags);
-		$event['tpl_ary'] = $tpl;
 	}
 
 	/**

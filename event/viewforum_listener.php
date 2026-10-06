@@ -57,6 +57,9 @@ class viewforum_listener implements EventSubscriberInterface
 	/** @var array Current topic sort parameters */
 	protected $sort_params = [];
 
+	/** @var string Unfiltered URL for a category Active Topics list */
+	protected $active_filter_url = '';
+
 	/** @var array Tags grouped by topic identifier */
 	protected $topic_tags = [];
 
@@ -116,12 +119,21 @@ class viewforum_listener implements EventSubscriberInterface
 			&& (((int) $forum_data['forum_flags'] & FORUM_FLAG_ACTIVE_TOPICS) !== 0);
 		if ($this->display_active_topics)
 		{
-			$this->selected_ids = [];
-			$this->sort_params = [];
+			$requested_ids = $this->get_requested_ids();
+			$requested_tags = $requested_ids ? $this->manager->get_tags_by_ids($requested_ids) : [];
+			$this->selected_ids = array_values(array_intersect($requested_ids, array_keys($requested_tags)));
+			$this->sort_params = [
+				'st' => (int) $event['sort_days'],
+				'sk' => $event['sort_key'],
+				'sd' => $event['sort_dir'],
+			];
+			$this->active_filter_url = $this->renderer->filter_url($this->forum_id, [], $this->sort_params);
 			$this->template->assign_vars([
 				'S_TOPIC_TAG_FILTERS' => false,
 				'TOPIC_TAG_FILTERS' => [],
-				'S_TOPIC_TAG_FILTERED' => false,
+				'S_TOPIC_TAG_FILTERED' => !empty($this->selected_ids),
+				'U_CLEAR_TOPIC_TAG_FILTERS' => $this->active_filter_url,
+				'S_FORUM_ACTION' => $this->renderer->url_with_tags($this->active_filter_url, $this->selected_ids),
 			]);
 			return;
 		}
@@ -232,6 +244,20 @@ class viewforum_listener implements EventSubscriberInterface
 			$topic_ids[] = $tag_topic_id;
 		}
 		$this->topic_tags = $this->assignments->get_tags_for_topics($topic_ids);
+
+		if ($this->display_active_topics)
+		{
+			$visible_tags = [];
+			foreach ($this->topic_tags as $tags)
+			{
+				$visible_tags += $tags;
+			}
+			$selected_tags = array_intersect_key($visible_tags, array_fill_keys($this->selected_ids, true));
+			$this->template->assign_vars([
+				'S_TOPIC_TAG_FILTERS' => !empty($selected_tags),
+				'TOPIC_TAG_FILTERS' => $this->renderer->render_for_url($selected_tags, $this->active_filter_url, $this->selected_ids),
+			]);
+		}
 	}
 
 	/**
@@ -247,7 +273,7 @@ class viewforum_listener implements EventSubscriberInterface
 		$tags = $this->topic_tags[$tag_topic_id] ?? [];
 		$topic_row = $event['topic_row'];
 		$topic_row['TOPIC_TAGS'] = $this->display_active_topics
-			? $this->renderer->render($tags)
+			? $this->renderer->render_for_url($tags, $this->active_filter_url, $this->selected_ids)
 			: $this->renderer->render($tags, $this->forum_id, $this->selected_ids, $this->sort_params);
 		$event['topic_row'] = $topic_row;
 	}
