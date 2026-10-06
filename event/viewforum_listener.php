@@ -48,6 +48,9 @@ class viewforum_listener implements EventSubscriberInterface
 	/** @var int Forum identifier */
 	protected $forum_id = 0;
 
+	/** @var bool Whether this is a category Active Topics list */
+	protected $display_active_topics = false;
+
 	/** @var array Selected tag identifiers */
 	protected $selected_ids = [];
 
@@ -107,6 +110,21 @@ class viewforum_listener implements EventSubscriberInterface
 	{
 		$this->forum_id = (int) $event['forum_id'];
 		$this->language->add_lang('topic_prefixes', 'phpbb/topicprefixes');
+		$forum_data = $event['forum_data'] ?? [];
+		$this->display_active_topics = isset($forum_data['forum_type'], $forum_data['forum_flags'])
+			&& (int) $forum_data['forum_type'] === FORUM_CAT
+			&& (((int) $forum_data['forum_flags'] & FORUM_FLAG_ACTIVE_TOPICS) !== 0);
+		if ($this->display_active_topics)
+		{
+			$this->selected_ids = [];
+			$this->sort_params = [];
+			$this->template->assign_vars([
+				'S_TOPIC_TAG_FILTERS' => false,
+				'TOPIC_TAG_FILTERS' => [],
+				'S_TOPIC_TAG_FILTERED' => false,
+			]);
+			return;
+		}
 
 		$forum_tags = $this->manager->get_available_tags($this->forum_id, false);
 		$available = array_filter($forum_tags, static function ($tag) {
@@ -228,7 +246,9 @@ class viewforum_listener implements EventSubscriberInterface
 		$tag_topic_id = $this->tag_topic_ids[$topic_id] ?? $topic_id;
 		$tags = $this->topic_tags[$tag_topic_id] ?? [];
 		$topic_row = $event['topic_row'];
-		$topic_row['TOPIC_TAGS'] = $this->renderer->render($tags, $this->forum_id, $this->selected_ids, $this->sort_params);
+		$topic_row['TOPIC_TAGS'] = $this->display_active_topics
+			? $this->renderer->render($tags)
+			: $this->renderer->render($tags, $this->forum_id, $this->selected_ids, $this->sort_params);
 		$event['topic_row'] = $topic_row;
 	}
 

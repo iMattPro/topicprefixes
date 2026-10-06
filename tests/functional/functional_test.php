@@ -274,6 +274,51 @@ class functional_test extends \phpbb_functional_test_case
 	/**
 	 * @depends test_first_post_edit_updates_tag_assignments
 	 */
+	public function test_active_topics_displays_tags_without_filter_links($fixture)
+	{
+		$this->login();
+		$this->get_db();
+		$result = $this->db->sql_query('SELECT forum_id, forum_flags
+			FROM phpbb_forums
+			WHERE ' . $this->db->sql_in_set('forum_id', array(1, self::FORUM_ID)));
+		$original_flags = array();
+		while ($row = $this->db->sql_fetchrow($result))
+		{
+			$original_flags[(int) $row['forum_id']] = (int) $row['forum_flags'];
+		}
+		$this->db->sql_freeresult($result);
+
+		try
+		{
+			foreach ($original_flags as $forum_id => $flags)
+			{
+				$this->db->sql_query('UPDATE phpbb_forums
+					SET forum_flags = ' . ($flags | FORUM_FLAG_ACTIVE_TOPICS) . '
+					WHERE forum_id = ' . $forum_id);
+			}
+
+			$crawler = self::request('GET', 'viewforum.php?f=1&tags=' . $fixture['php_id'] . "&sid={$this->sid}");
+			$topic_list = $crawler->filter('ul.topiclist.topics');
+			self::assertStringContainsString('Structured tag title', $topic_list->text());
+			self::assertStringContainsString('PHP 8.4 filter', $topic_list->text());
+			self::assertCount(0, $topic_list->filter('a.topic-tag'));
+			self::assertGreaterThanOrEqual(1, $topic_list->filter('span.topic-tag')->count());
+			self::assertCount(0, $crawler->filter('.topic-tag-filter-panel'));
+		}
+		finally
+		{
+			foreach ($original_flags as $forum_id => $flags)
+			{
+				$this->db->sql_query('UPDATE phpbb_forums
+					SET forum_flags = ' . $flags . '
+					WHERE forum_id = ' . $forum_id);
+			}
+		}
+	}
+
+	/**
+	 * @depends test_first_post_edit_updates_tag_assignments
+	 */
 	public function test_search_topic_results_display_tags($fixture)
 	{
 		$this->login();
