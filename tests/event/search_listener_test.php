@@ -86,6 +86,90 @@ class search_listener_test extends \phpbb_test_case
 		);
 	}
 
+	public function test_unsupported_search_paths_are_noops(): void
+	{
+		list($listener, $manager, $assignments, $filter, $renderer, $request) = $this->listener();
+		$request->expects(self::never())->method('variable');
+		$filter->expects(self::never())->method('topic_id_condition');
+		$renderer->expects(self::never())->method('url_with_tags');
+
+		$predefined = new \phpbb\event\data([
+			'search_id' => 'egosearch',
+			'show_results' => 'topics',
+			'sql' => 'ORIGINAL_SEARCH_SQL',
+		]);
+		$listener->filter_predefined_search($predefined);
+		self::assertSame('ORIGINAL_SEARCH_SQL', $predefined['sql']);
+
+		$unread = new \phpbb\event\data(['sql_array' => ['WHERE' => 'ORIGINAL_UNREAD_SQL']]);
+		$listener->filter_unread_topics($unread);
+		self::assertSame('ORIGINAL_UNREAD_SQL', $unread['sql_array']['WHERE']);
+
+		$backend = new \phpbb\event\data([
+			'type' => 'unsupported',
+			'post_visibility' => 'VISIBLE',
+			'search_key_array' => [],
+		]);
+		$listener->filter_backend($backend);
+		self::assertSame('VISIBLE', $backend['post_visibility']);
+
+		$url = new \phpbb\event\data(['u_search' => './search.php']);
+		$listener->preserve_filter_url($url);
+		self::assertSame('./search.php', $url['u_search']);
+	}
+
+	public function test_predefined_search_without_selection_leaves_sql_unchanged(): void
+	{
+		list($listener, $manager, $assignments, $filter, $renderer, $request) = $this->listener();
+		$request->method('variable')->with('tags', '')->willReturn('');
+		$manager->expects(self::never())->method('get_tags_by_ids');
+		$filter->expects(self::never())->method('topic_id_condition');
+
+		$event = new \phpbb\event\data([
+			'search_id' => 'active_topics',
+			'show_results' => 'topics',
+			'sql' => 'ORIGINAL_SQL',
+		]);
+		$listener->filter_predefined_search($event);
+
+		self::assertSame('ORIGINAL_SQL', $event['sql']);
+	}
+
+	public function test_unread_search_without_selection_leaves_sql_unchanged(): void
+	{
+		list($listener, $manager, $assignments, $filter, $renderer, $request) = $this->listener();
+		$request->method('variable')->with('tags', '')->willReturn('');
+		$manager->expects(self::never())->method('get_tags_by_ids');
+		$filter->expects(self::never())->method('topic_id_condition');
+
+		$listener->filter_predefined_search(new \phpbb\event\data([
+			'search_id' => 'unreadposts',
+			'show_results' => 'topics',
+			'sql' => '',
+		]));
+		$event = new \phpbb\event\data(['sql_array' => ['WHERE' => 'ORIGINAL_SQL']]);
+		$listener->filter_unread_topics($event);
+
+		self::assertSame('ORIGINAL_SQL', $event['sql_array']['WHERE']);
+	}
+
+	public function test_predefined_search_without_order_by_appends_tag_condition(): void
+	{
+		list($listener, $manager, $assignments, $filter, $renderer, $request) = $this->listener();
+		$request->method('variable')->with('tags', '')->willReturn('1');
+		$manager->method('get_tags_by_ids')->with([1])->willReturn([1 => ['prefix_id' => 1]]);
+		$filter->method('topic_id_condition')->with('t.topic_id', [1])->willReturn('TAG_CONDITION');
+
+		$event = new \phpbb\event\data([
+			'search_id' => 'active_topics',
+			'show_results' => 'topics',
+			'sql' => 'SELECT topic_id FROM topics WHERE VISIBLE',
+		]);
+		$listener->filter_predefined_search($event);
+
+		self::assertSame('SELECT topic_id FROM topics WHERE VISIBLE AND TAG_CONDITION', $event['sql']);
+	}
+
 	public function test_topic_backend_intersects_visibility_and_changes_cache_key(): void
 	{
 		list($listener, $manager, $assignments, $filter, $renderer, $request) = $this->listener();

@@ -108,6 +108,30 @@ class renderer_test extends \phpbb_test_case
 		self::assertSame('./search.php?keywords=test', $renderer->url_with_tags('./search.php?keywords=test', []));
 	}
 
+	public function test_render_for_url_adds_unselected_tag_without_toggling_selected_tags(): void
+	{
+		$renderer = $this->renderer();
+		$tags = [
+			[
+				'prefix_id' => 2,
+				'prefix_tag' => 'Feature',
+				'prefix_color' => '1D70B8',
+			],
+			[
+				'prefix_id' => 1,
+				'prefix_tag' => 'Selected',
+				'prefix_color' => 'D4351C',
+			],
+		];
+
+		$rendered = $renderer->render_for_url($tags, './search.php', [3, 1], false);
+
+		self::assertFalse($rendered[0]['S_SELECTED']);
+		self::assertSame('./search.php?tags=1%2C2%2C3', $rendered[0]['U_FILTER']);
+		self::assertTrue($rendered[1]['S_SELECTED']);
+		self::assertSame('./search.php?tags=1%2C3', $rendered[1]['U_FILTER']);
+	}
+
 	public function test_rendered_tag_names_are_plain_text(): void
 	{
 		$renderer = $this->renderer();
