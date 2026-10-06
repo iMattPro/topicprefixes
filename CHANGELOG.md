@@ -6,9 +6,11 @@
 - Added multiple color-coded tags per topic with automatic badge text contrast and badges throughout forum, topic, MCP, and search displays.
 - Added centralized ACP management for tag text, color, order, status, and availability across multiple forums.
 - Added accessible tag selection when creating topics or editing their first posts.
-- Added clickable forum filters that can combine multiple tags using AND matching.
+- Added clickable forum filters that can combine multiple tags using AND matching (only in forum view lists).
 - Preserved tags through topic moves, splits, forks, and merges, including tags retained after moving into forums where they are unavailable for new assignments.
 - Added a safe, restartable upgrade that converts legacy prefixes and assignments into tags while removing matching prefix text from topic titles and first-post subjects.
+- Added automatic splitting of complete adjacent bracket sequences and consolidation of duplicate legacy definitions with matching names and enabled states, while preserving malformed formats and same-name definitions with conflicting states.
+- Required legacy upgrades to run with the board disabled and directed administrators to back up the database first.
 - Added an interactive CLI for splitting tags into multiple separate tags or merging one tag into another.
 - Raised minimum requirements to phpBB 3.3.5 and PHP 7.2.
 - Note: implementations for showing tags on UCP main page, bookmarks, and subscriptions will take effect after phpBB adds new proposed events (targeted for 3.3.19).

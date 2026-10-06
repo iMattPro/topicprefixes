@@ -11,9 +11,22 @@ The phpBB Topic Tags extension provides administrator-curated topic tags. Tags a
 - Make each tag available in one or more forums.
 - Assign multiple tags while creating a topic or editing its first post.
 - Display readable colored badges in topic lists, topic pages, and search results.
-- Filter forum topic lists by one or more tags using AND semantics.
+- Filter topic lists within individual forums by one or more tags using AND semantics.
 - Upgrade existing title prefixes safely into relational tag assignments.
 - This is the same extension currently in use at phpbb.com in the Extensions and Styles in development forums.
+
+## Upgrading from 1.x
+
+Before enabling version 2, make a full database backup and disable the board in
+General > Board settings. The extension blocks a legacy upgrade while the board
+is enabled.
+
+Migration splits complete adjacent bracket sequences such as `[3.3][DEV]` into
+separate tags. Legacy prefixes duplicated within or across multiple forums are 
+consolidated into one tag available in each applicable forum when their decoded 
+names and enabled states match. Other combined formats and same-name definitions with
+different enabled states remain separate. This upgrade is one-way; restore the
+pre-upgrade database backup to undo it.
 
 ## Repairing topic tags
 
