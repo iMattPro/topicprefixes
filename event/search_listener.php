@@ -60,6 +60,9 @@ class search_listener implements EventSubscriberInterface
 	/** @var bool */
 	protected $language_loaded = false;
 
+	/** @var string */
+	protected $predefined_search = '';
+
 	public function __construct(manager $manager, assignment_manager $assignments, filter $filter, renderer $renderer, request $request, template $template, language $language)
 	{
 		$this->manager = $manager;
@@ -83,10 +86,70 @@ class search_listener implements EventSubscriberInterface
 			'core.search_mysql_by_author_modify_search_key' => 'filter_backend',
 			'core.search_postgres_by_keyword_modify_search_key' => 'filter_backend',
 			'core.search_postgres_by_author_modify_search_key' => 'filter_backend',
+			'core.search_modify_param_after' => 'filter_predefined_search',
+			'core.get_unread_topics_modify_sql' => 'filter_unread_topics',
 			'core.search_modify_url_parameters' => 'preserve_filter_url',
 			'core.search_modify_rowset' => 'load_search_tags',
 			'core.search_modify_tpl_ary' => 'add_search_tags',
 		];
+	}
+
+	/**
+	 * Filter SQL-backed predefined searches before result IDs are collected.
+	 */
+	public function filter_predefined_search($event): void
+	{
+		$search_id = (string) $event['search_id'];
+		$this->predefined_search = $search_id;
+
+		if ($search_id === 'unreadposts')
+		{
+			// get_unread_topics() owns this query and exposes its own SQL event.
+			return;
+		}
+
+		if (!in_array($search_id, ['active_topics', 'newposts', 'unanswered'], true))
+		{
+			return;
+		}
+
+		$this->filterable = true;
+		$selected_ids = $this->get_selected_ids();
+		if (!$selected_ids)
+		{
+			return;
+		}
+
+		$topic_id = $event['show_results'] === 'posts' ? 'p.topic_id' : 't.topic_id';
+		$event['sql'] = $this->add_condition_before_order_by(
+			(string) $event['sql'],
+			$this->filter->topic_id_condition($topic_id, $selected_ids)
+		);
+	}
+
+	/**
+	 * Filter unread-topic IDs inside phpBB's read-tracking query.
+	 */
+	public function filter_unread_topics($event): void
+	{
+		if ($this->predefined_search !== 'unreadposts')
+		{
+			return;
+		}
+
+		$this->filterable = true;
+		$selected_ids = $this->get_selected_ids();
+		if (!$selected_ids)
+		{
+			return;
+		}
+
+		$sql_array = $event['sql_array'];
+		$sql_array['WHERE'] = $this->add_condition_before_order_by(
+			$sql_array['WHERE'],
+			$this->filter->topic_id_condition('t.topic_id', $selected_ids)
+		);
+		$event['sql_array'] = $sql_array;
 	}
 
 	/**
@@ -207,5 +270,19 @@ class search_listener implements EventSubscriberInterface
 			$this->language->add_lang('topic_prefixes', 'phpbb/topicprefixes');
 			$this->language_loaded = true;
 		}
+	}
+
+	/**
+	 * Append a WHERE condition without disturbing predefined search sorting.
+	 */
+	protected function add_condition_before_order_by(string $sql, string $condition): string
+	{
+		$position = strripos($sql, 'ORDER BY');
+		if ($position === false)
+		{
+			return $sql . ' AND ' . $condition;
+		}
+
+		return substr($sql, 0, $position) . 'AND ' . $condition . ' ' . substr($sql, $position);
 	}
 }

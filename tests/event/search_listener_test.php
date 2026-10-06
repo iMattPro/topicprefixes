@@ -21,10 +21,69 @@ class search_listener_test extends \phpbb_test_case
 			'core.search_mysql_by_author_modify_search_key',
 			'core.search_postgres_by_keyword_modify_search_key',
 			'core.search_postgres_by_author_modify_search_key',
+			'core.search_modify_param_after',
+			'core.get_unread_topics_modify_sql',
 			'core.search_modify_url_parameters',
 			'core.search_modify_rowset',
 			'core.search_modify_tpl_ary',
 		], array_keys(\phpbb\topicprefixes\event\search_listener::getSubscribedEvents()));
+	}
+
+	/**
+	 * @dataProvider predefined_search_data
+	 */
+	public function test_predefined_search_adds_tag_condition_before_sorting(string $search_id, string $show_results, string $topic_id): void
+	{
+		list($listener, $manager, $assignments, $filter, $renderer, $request) = $this->listener();
+		$request->method('variable')->with('tags', '')->willReturn('1');
+		$manager->expects(self::once())->method('get_tags_by_ids')->with([1])->willReturn([1 => ['prefix_id' => 1]]);
+		$filter->expects(self::once())->method('topic_id_condition')->with($topic_id, [1])->willReturn('TAG_CONDITION');
+
+		$event = new \phpbb\event\data([
+			'search_id' => $search_id,
+			'show_results' => $show_results,
+			'sql' => 'SELECT result_id FROM result_table WHERE VISIBLE ORDER BY result_id DESC',
+		]);
+		$listener->filter_predefined_search($event);
+
+		self::assertSame(
+			'SELECT result_id FROM result_table WHERE VISIBLE AND TAG_CONDITION ORDER BY result_id DESC',
+			$event['sql']
+		);
+	}
+
+	public function predefined_search_data(): array
+	{
+		return [
+			'active topics' => ['active_topics', 'topics', 't.topic_id'],
+			'new topics' => ['newposts', 'topics', 't.topic_id'],
+			'new posts' => ['newposts', 'posts', 'p.topic_id'],
+			'unanswered topics' => ['unanswered', 'topics', 't.topic_id'],
+			'unanswered posts' => ['unanswered', 'posts', 'p.topic_id'],
+		];
+	}
+
+	public function test_unread_search_filters_get_unread_topics_query(): void
+	{
+		list($listener, $manager, $assignments, $filter, $renderer, $request) = $this->listener();
+		$request->method('variable')->with('tags', '')->willReturn('1');
+		$manager->expects(self::once())->method('get_tags_by_ids')->with([1])->willReturn([1 => ['prefix_id' => 1]]);
+		$filter->expects(self::once())->method('topic_id_condition')->with('t.topic_id', [1])->willReturn('TAG_CONDITION');
+
+		$listener->filter_predefined_search(new \phpbb\event\data([
+			'search_id' => 'unreadposts',
+			'show_results' => 'topics',
+			'sql' => '',
+		]));
+		$event = new \phpbb\event\data([
+			'sql_array' => ['WHERE' => 'UNREAD AND VISIBLE ORDER BY t.topic_last_post_time DESC'],
+		]);
+		$listener->filter_unread_topics($event);
+
+		self::assertSame(
+			'UNREAD AND VISIBLE AND TAG_CONDITION ORDER BY t.topic_last_post_time DESC',
+			$event['sql_array']['WHERE']
+		);
 	}
 
 	public function test_topic_backend_intersects_visibility_and_changes_cache_key(): void

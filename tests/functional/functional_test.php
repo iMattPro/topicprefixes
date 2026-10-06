@@ -346,6 +346,70 @@ class functional_test extends \phpbb_functional_test_case
 	/**
 	 * @depends test_first_post_edit_updates_tag_assignments
 	 */
+	public function test_predefined_searches_filter_in_place($fixture)
+	{
+		$this->login();
+		$control = $this->create_topic(self::FORUM_ID, 'Untagged predefined search control', 'Untagged control post');
+		$this->get_db();
+
+		$result = $this->db->sql_query('SELECT forum_flags
+			FROM phpbb_forums
+			WHERE forum_id = ' . self::FORUM_ID);
+		$original_flags = (int) $this->db->sql_fetchfield('forum_flags');
+		$this->db->sql_freeresult($result);
+		$result = $this->db->sql_query('SELECT user_lastvisit, user_lastmark
+			FROM phpbb_users
+			WHERE user_id = 2');
+		$original_user_times = $this->db->sql_fetchrow($result);
+		$this->db->sql_freeresult($result);
+		try
+		{
+			$this->db->sql_query('UPDATE phpbb_forums
+				SET forum_flags = ' . ($original_flags | FORUM_FLAG_ACTIVE_TOPICS) . '
+				WHERE forum_id = ' . self::FORUM_ID);
+			$this->db->sql_query('UPDATE phpbb_users
+				SET user_lastvisit = 0, user_lastmark = 0
+				WHERE user_id = 2');
+			$this->db->sql_query('DELETE FROM phpbb_topics_track
+				WHERE user_id = 2
+					AND ' . $this->db->sql_in_set('topic_id', [$fixture['topic_id'], (int) $control['topic_id']]));
+			$this->db->sql_query('DELETE FROM phpbb_forums_track
+				WHERE user_id = 2
+					AND forum_id = ' . self::FORUM_ID);
+
+			$searches = [
+				'active topics' => 'search.php?search_id=active_topics',
+				'new topics' => 'search.php?search_id=newposts&sr=topics',
+				'new posts' => 'search.php?search_id=newposts&sr=posts',
+				'unanswered topics' => 'search.php?search_id=unanswered&sr=topics',
+				'unanswered posts' => 'search.php?search_id=unanswered&sr=posts',
+				'unread topics' => 'search.php?search_id=unreadposts',
+			];
+
+			foreach ($searches as $name => $url)
+			{
+				$crawler = self::request('GET', $url . '&tags=' . $fixture['php_id'] . "&sid={$this->sid}");
+				$page = $crawler->filter('#page-body')->text();
+				self::assertStringContainsString('Structured tag title', $page, $name);
+				self::assertStringNotContainsString('Untagged predefined search control', $page, $name);
+				self::assertCount(1, $crawler->filter('.topic-tag-filter-panel .topic-tag-selected'), $name);
+			}
+		}
+		finally
+		{
+			$this->db->sql_query('UPDATE phpbb_forums
+				SET forum_flags = ' . $original_flags . '
+				WHERE forum_id = ' . self::FORUM_ID);
+			$this->db->sql_query('UPDATE phpbb_users
+				SET user_lastvisit = ' . (int) $original_user_times['user_lastvisit'] . ',
+					user_lastmark = ' . (int) $original_user_times['user_lastmark'] . '
+				WHERE user_id = 2');
+		}
+	}
+
+	/**
+	 * @depends test_first_post_edit_updates_tag_assignments
+	 */
 	public function test_mcp_forum_displays_tags($fixture)
 	{
 		$this->login();
