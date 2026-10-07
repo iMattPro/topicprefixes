@@ -269,6 +269,12 @@ class functional_test extends \phpbb_functional_test_case
 		self::assertCount(1, $selected);
 		self::assertSame('Remove “PHP 8.4 filter” from topic filters', $selected->attr('title'));
 		self::assertSame('Remove “PHP 8.4 filter” from topic filters', $selected->attr('aria-label'));
+		$row_tag = $crawler->filter('ul.topiclist.topics .topic-row-tags .topic-tag-selected')->first();
+		self::assertCount(1, $row_tag);
+		self::assertSame('Remove “PHP 8.4 filter” from topic filters', $row_tag->attr('title'));
+		self::assertSame('Remove “PHP 8.4 filter” from topic filters', $row_tag->attr('aria-label'));
+		self::assertSame('true', $row_tag->attr('aria-current'));
+		self::assertStringNotContainsString('tags=', $row_tag->attr('href'));
 	}
 
 	/**
@@ -325,6 +331,11 @@ class functional_test extends \phpbb_functional_test_case
 		self::assertStringContainsString('PHP 8.4 filter', $crawler->filter('ul.topiclist .topic-tag')->text());
 		self::assertGreaterThanOrEqual(1, $crawler->filter('ul.topiclist a.topic-tag')->count());
 		self::assertCount(1, $crawler->filter('.topic-tag-filter-panel .topic-tag-selected'));
+		$row_tag = $crawler->filter('ul.topiclist.topics .topic-row-tags .topic-tag-selected')->first();
+		self::assertCount(1, $row_tag);
+		self::assertSame('Remove “PHP 8.4 filter” from topic filters', $row_tag->attr('title'));
+		self::assertSame('true', $row_tag->attr('aria-current'));
+		self::assertStringNotContainsString('tags=', $row_tag->attr('href'));
 
 		$crawler = self::request('GET', 'search.php?keywords=Structured&sr=topics&tags=' . $fixture['php_id'] . "&sid={$this->sid}");
 		self::assertStringContainsString('Structured tag title', $crawler->filter('ul.topiclist.topics')->text());

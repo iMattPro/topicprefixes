@@ -57,7 +57,12 @@ class viewforum_listener_test extends \phpbb_test_case
 			'BASE_URL',
 			'./viewforum.php?f=2&amp;st=0&amp;sk=t&amp;sd=d&amp;tags=1%2C2'
 		);
-		$renderer->method('render')->willReturn(array());
+		$sort_params = array('st' => 0, 'sk' => 't', 'sd' => 'd');
+		$renderer->expects(self::exactly(3))->method('render')->withConsecutive(
+			[$tags, 2, array(1, 2), $sort_params, true],
+			[array(1 => $tags[1]), 2, array(1, 2), $sort_params, true],
+			[array(2 => $tags[2]), 2, array(1, 2), $sort_params, true]
+		)->willReturn(array());
 		$renderer->expects(self::exactly(4))->method('filter_url')->withConsecutive(
 			[2, [], array('st' => 0, 'sk' => 't', 'sd' => 'd')],
 			[2, array(1, 2)],

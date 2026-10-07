@@ -274,7 +274,7 @@ class viewforum_listener implements EventSubscriberInterface
 		$topic_row = $event['topic_row'];
 		$topic_row['TOPIC_TAGS'] = $this->display_active_topics
 			? $this->renderer->render_for_url($tags, $this->active_filter_url, $this->selected_ids)
-			: $this->renderer->render($tags, $this->forum_id, $this->selected_ids, $this->sort_params);
+			: $this->renderer->render($tags, $this->forum_id, $this->selected_ids, $this->sort_params, true);
 		$event['topic_row'] = $topic_row;
 	}
 
