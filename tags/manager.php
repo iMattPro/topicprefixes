@@ -356,6 +356,54 @@ class manager
 	}
 
 	/**
+	 * Replace the complete tag display order.
+	 *
+	 * The submitted identifiers must contain every current tag exactly once.
+	 * This prevents a stale ACP page from silently dropping newly-created tags.
+	 *
+	 * @param array $tag_ids Tag identifiers in desired display order
+	 * @return bool Whether the complete order was valid and saved
+	 */
+	public function reorder_tags(array $tag_ids): bool
+	{
+		$tag_ids = array_map('intval', array_values($tag_ids));
+		$current_tags = $this->get_tags();
+		$current_ids = array_map('intval', array_keys($current_tags));
+
+		if (count($tag_ids) !== count(array_unique($tag_ids)))
+		{
+			return false;
+		}
+
+		$submitted_set = $tag_ids;
+		$current_set = $current_ids;
+		sort($submitted_set);
+		sort($current_set);
+		if ($submitted_set !== $current_set)
+		{
+			return false;
+		}
+
+		$this->db->sql_transaction('begin');
+		foreach ($tag_ids as $position => $tag_id)
+		{
+			$order = $position + 1;
+			if ((int) $current_tags[$tag_id]['prefix_order'] === $order)
+			{
+				continue;
+			}
+
+			$this->db->sql_query('UPDATE ' . $this->tags_table . '
+				SET prefix_order = ' . $order . '
+				WHERE prefix_id = ' . $tag_id);
+		}
+		$this->db->sql_transaction('commit');
+		$this->invalidate_catalog();
+
+		return true;
+	}
+
+	/**
 	 * Get forum names grouped by tag.
 	 *
 	 * @return array Forum names keyed by tag identifier
@@ -371,7 +419,7 @@ class manager
 		$forums = [];
 		while ($row = $this->db->sql_fetchrow($result))
 		{
-			$forums[(int) $row['prefix_id']][] = $row['forum_name'];
+			$forums[(int) $row['prefix_id']][] = self::decode_name($row['forum_name']);
 		}
 		$this->db->sql_freeresult($result);
 
@@ -414,9 +462,9 @@ class manager
 	}
 
 	/**
-	 * Restore stored HTML and Unicode references to semantic tag text.
+	 * Restore stored HTML and Unicode references to semantic text.
 	 *
-	 * @param string $name Stored tag text
+	 * @param string $name Stored phpBB text
 	 * @return string Display text
 	 */
 	public static function decode_name(string $name): string

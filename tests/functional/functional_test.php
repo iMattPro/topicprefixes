@@ -33,10 +33,69 @@ class functional_test extends \phpbb_functional_test_case
 		$crawler = $this->acp_page();
 		$this->assertContainsLang('TOPIC_TAGS', $crawler->filter('#main')->text());
 		self::assertCount(1, $crawler->filter('input[type="color"]'));
-		self::assertCount(1, $crawler->filter('select[name="forum_ids[]"][multiple]'));
+		self::assertGreaterThanOrEqual(1, $crawler->filter('input[type="checkbox"][name="forum_ids[]"]')->count());
+		self::assertCount(1, $crawler->filter('.topic-tag-workspace .topic-tag-inspector'));
+		self::assertCount(0, $crawler->filter('details.topic-tag-maintenance'));
+		self::assertCount(1, $crawler->filter('#topic-tag-notices'));
+		self::assertCount(1, $crawler->filter('#topic-tag-notice-template .topic-tag-notice-close'));
+		self::assertCount(1, $crawler->filter('input[name="tag_color"] + input#tag_color_text:not([pattern])'));
+		self::assertGreaterThanOrEqual(3, $crawler->filter('.tp-button')->count());
+		self::assertCount(0, $crawler->filter('.topic-tag-actions .tp-button'));
+		self::assertCount(4, $crawler->filter('#topic-tag-row-template .topic-tag-actions a'));
 		self::assertSame('50', $crawler->filter('input[name="tag_name"]')->attr('maxlength'));
 
 		return true;
+	}
+
+	/**
+	 * @depends test_acp_module
+	 */
+	public function test_acp_decodes_forum_name_entities($module_ready)
+	{
+		self::assertTrue($module_ready);
+		$this->login();
+		$this->admin_login();
+		$tag_name = 'Forum emoji display';
+		$this->create_tag($tag_name, '#4a76a8', array(self::FORUM_ID));
+
+		$this->get_db();
+		$result = $this->db->sql_query('SELECT forum_name FROM phpbb_forums WHERE forum_id = ' . self::FORUM_ID);
+		$original_name = $this->db->sql_fetchfield('forum_name');
+		$this->db->sql_freeresult($result);
+		$stored_name = 'YOUR FIRST CATEGORY EMOJI &#128512; TITLE &amp; MORE';
+		$this->db->sql_query("UPDATE phpbb_forums
+			SET forum_name = '" . $this->db->sql_escape($stored_name) . "'
+			WHERE forum_id = " . self::FORUM_ID);
+		$this->purge_cache();
+
+		try
+		{
+			$crawler = $this->acp_page();
+		}
+		finally
+		{
+			$this->db->sql_query("UPDATE phpbb_forums
+				SET forum_name = '" . $this->db->sql_escape($original_name) . "'
+				WHERE forum_id = " . self::FORUM_ID);
+			$this->purge_cache();
+		}
+
+		$expected_name = 'YOUR FIRST CATEGORY EMOJI 😀 TITLE & MORE';
+		$forum_option = $crawler->filter('#topic-tag-forums .topic-tag-forum-option')->reduce(function ($node) {
+			return $node->filter('input[value="' . self::FORUM_ID . '"]')->count() > 0;
+		});
+		self::assertCount(1, $forum_option);
+		self::assertStringContainsString($expected_name, $forum_option->text());
+		self::assertStringNotContainsString('&#128512;', $forum_option->text());
+		$summary = $crawler->filter('.topic-tag-item[data-tag-name="' . $tag_name . '"] .topic-tag-forum-preview');
+		self::assertCount(1, $summary);
+		self::assertStringContainsString($expected_name, $summary->text());
+		self::assertSame($expected_name, $summary->attr('title'));
+		$row = $crawler->filter('.topic-tag-item[data-tag-name="' . $tag_name . '"]');
+		self::assertSame('true', $row->filter('.topic-tag-move-up')->attr('aria-disabled'));
+		self::assertNull($row->filter('.topic-tag-move-up')->attr('href'));
+		self::assertSame('true', $row->filter('.topic-tag-move-down')->attr('aria-disabled'));
+		self::assertNull($row->filter('.topic-tag-move-down')->attr('href'));
 	}
 
 	/**
@@ -49,13 +108,12 @@ class functional_test extends \phpbb_functional_test_case
 		$this->login();
 		$this->admin_login();
 		$crawler = $this->acp_page();
-		$form = $crawler->selectButton($this->lang('SUBMIT'))->form(array(
+		$form = $crawler->selectButton($this->lang('TOPIC_TAG_SAVE'))->form(array(
 			'tag_name' => $emoji_name,
 			'tag_color' => '#4a76a8',
 			'tag_enabled' => 1,
-			'forum_ids' => array(self::FORUM_ID),
 		));
-		$crawler = self::submit($form);
+		$crawler = $this->submit_tag_form($form, array(self::FORUM_ID));
 		$this->assertContainsLang('TOPIC_TAG_SAVED', $crawler->text());
 
 		$this->get_db();
@@ -67,9 +125,22 @@ class functional_test extends \phpbb_functional_test_case
 		self::assertGreaterThan(0, $tag_id);
 
 		$crawler = $this->acp_page();
-		self::assertStringContainsString($emoji_name, $crawler->filter('.topic-tag')->text());
-		self::assertGreaterThanOrEqual(1, $crawler->filter('.topic-tag-forums[role="list"] .topic-tag-forum[role="listitem"]')->count());
-		self::assertCount(0, $crawler->filter('.topic-tag-forums ul, .topic-tag-forums li, .topic-tag-forum-more'));
+		$badge_names = $crawler->filter('.topic-tag')->each(function ($badge) {
+			return $badge->text();
+		});
+		self::assertContains($emoji_name, $badge_names);
+		self::assertGreaterThanOrEqual(1, $crawler->filter('.topic-tag-item .topic-tag-forum-summary')->count());
+		$rows = $crawler->filter('.topic-tag-item:not(.topic-tag-row-template)');
+		$first = $rows->eq(0);
+		$last = $rows->eq($rows->count() - 1);
+		self::assertSame('true', $first->filter('.topic-tag-move-up')->attr('aria-disabled'));
+		self::assertNull($first->filter('.topic-tag-move-up')->attr('href'));
+		self::assertSame('false', $first->filter('.topic-tag-move-down')->attr('aria-disabled'));
+		self::assertNotNull($first->filter('.topic-tag-move-down')->attr('href'));
+		self::assertSame('false', $last->filter('.topic-tag-move-up')->attr('aria-disabled'));
+		self::assertNotNull($last->filter('.topic-tag-move-up')->attr('href'));
+		self::assertSame('true', $last->filter('.topic-tag-move-down')->attr('aria-disabled'));
+		self::assertNull($last->filter('.topic-tag-move-down')->attr('href'));
 
 		$topic = $this->create_topic(self::FORUM_ID, 'Emoji tag topic', 'Emoji tag post', array(
 			'topic_tags' => array($tag_id),
@@ -104,7 +175,7 @@ class functional_test extends \phpbb_functional_test_case
 		self::assertContains($name, $badge_names);
 		$crawler = $this->acp_page('action=edit&tag_id=' . $tag_id);
 		self::assertSame($name, $crawler->filter('input[name="tag_name"]')->attr('value'));
-		$form = $crawler->selectButton($this->lang('SUBMIT'))->form();
+		$form = $crawler->selectButton($this->lang('TOPIC_TAG_SAVE'))->form();
 		$crawler = self::submit($form);
 		$this->assertContainsLang('TOPIC_TAG_SAVED', $crawler->text());
 
@@ -151,13 +222,12 @@ class functional_test extends \phpbb_functional_test_case
 		$tag_id = $fixture['bug_id'];
 
 		$crawler = $this->acp_page('action=edit&tag_id=' . $tag_id);
-		$form = $crawler->selectButton($this->lang('SUBMIT'))->form(array(
+		$form = $crawler->selectButton($this->lang('TOPIC_TAG_SAVE'))->form(array(
 			'tag_name' => 'Confirmed bug filter',
 			'tag_color' => '#aa00cc',
 			'tag_enabled' => 1,
-			'forum_ids' => array(self::FORUM_ID),
 		));
-		self::submit($form);
+		$this->submit_tag_form($form, array(self::FORUM_ID));
 
 		$this->get_db();
 		$result = $this->db->sql_query('SELECT prefix_tag, prefix_color FROM phpbb_topic_prefixes WHERE prefix_id = ' . $tag_id);
@@ -482,13 +552,12 @@ class functional_test extends \phpbb_functional_test_case
 	protected function create_tag($name, $color, array $forum_ids)
 	{
 		$crawler = $this->acp_page();
-		$form = $crawler->selectButton($this->lang('SUBMIT'))->form(array(
+		$form = $crawler->selectButton($this->lang('TOPIC_TAG_SAVE'))->form(array(
 			'tag_name' => $name,
 			'tag_color' => $color,
 			'tag_enabled' => 1,
-			'forum_ids' => $forum_ids,
 		));
-		$crawler = self::submit($form);
+		$crawler = $this->submit_tag_form($form, $forum_ids);
 		$this->assertContainsLang('TOPIC_TAG_SAVED', $crawler->text());
 
 		$this->get_db();
@@ -498,6 +567,19 @@ class functional_test extends \phpbb_functional_test_case
 		$tag_id = (int) $this->db->sql_fetchfield('prefix_id');
 		$this->db->sql_freeresult($result);
 		return $tag_id;
+	}
+
+	/**
+	 * Submit the ACP checkbox form with selected forum identifiers.
+	 */
+	protected function submit_tag_form(\Symfony\Component\DomCrawler\Form $form, array $forum_ids)
+	{
+		$values = $form->getPhpValues();
+		$values['forum_ids'] = $forum_ids;
+		$crawler = self::$client->request($form->getMethod(), $form->getUri(), $values);
+		self::assert_response_html();
+
+		return $crawler;
 	}
 
 	protected function acp_page($params = '')

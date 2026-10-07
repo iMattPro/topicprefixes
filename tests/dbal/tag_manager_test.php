@@ -130,6 +130,23 @@ class tag_manager_test extends tags_base
 		self::assertSame(array(2, 1, 3, 4), array_keys($manager->get_tags()));
 	}
 
+	public function test_reorder_replaces_complete_global_order()
+	{
+		$manager = $this->create_tag_manager();
+		self::assertTrue($manager->reorder_tags(array(4, 2, 1, 3)));
+		self::assertSame(array(4, 2, 1, 3), array_keys($manager->get_tags()));
+		self::assertSame(array(4, 2, 1, 3), array_keys($this->create_tag_manager()->get_tags()));
+	}
+
+	public function test_reorder_rejects_stale_or_duplicate_identifier_sets()
+	{
+		$manager = $this->create_tag_manager();
+		self::assertFalse($manager->reorder_tags(array(1, 2, 3)));
+		self::assertFalse($manager->reorder_tags(array(1, 2, 3, 3)));
+		self::assertFalse($manager->reorder_tags(array(1, 2, 3, 999)));
+		self::assertSame(array(1, 2, 3, 4), array_keys($manager->get_tags()));
+	}
+
 	public function test_color_validation()
 	{
 		$manager = $this->create_tag_manager();
@@ -168,13 +185,16 @@ class tag_manager_test extends tags_base
 	 */
 	public function test_enabled_state_and_forum_names(): void
 	{
+		$this->db->sql_query("UPDATE phpbb_forums
+			SET forum_name = 'Forum Two &#128512; &amp; More'
+			WHERE forum_id = 2");
 		$manager = $this->create_tag_manager();
 		self::assertTrue($manager->set_enabled(1, false));
 		self::assertArrayNotHasKey(1, $manager->get_available_tags(2));
 		self::assertSame([
-			1 => ['Forum Two', 'Forum Three'],
-			2 => ['Forum Two'],
-			3 => ['Forum Two'],
+			1 => ['Forum Two 😀 & More', 'Forum Three'],
+			2 => ['Forum Two 😀 & More'],
+			3 => ['Forum Two 😀 & More'],
 			4 => ['Forum Three'],
 		], $manager->get_forum_names_by_tag());
 	}

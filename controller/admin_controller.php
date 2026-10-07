@@ -89,6 +89,10 @@ class admin_controller
 		{
 			case 'save':
 				$this->save_tag($tag_id);
+				if ($this->request->is_ajax())
+				{
+					return;
+				}
 			break;
 
 			case 'edit':
@@ -101,10 +105,26 @@ class admin_controller
 
 			case 'delete':
 				$this->delete_tag($tag_id);
+				if ($this->request->is_ajax())
+				{
+					return;
+				}
 			break;
 
 			case 'toggle':
 				$this->toggle_tag($tag_id);
+				if ($this->request->is_ajax())
+				{
+					return;
+				}
+			break;
+
+			case 'reorder':
+				$this->reorder_tags();
+				if ($this->request->is_ajax())
+				{
+					return;
+				}
 			break;
 
 			case 'move_up':
@@ -128,13 +148,18 @@ class admin_controller
 		foreach ($this->manager->get_tags() as $tag)
 		{
 			$tag_id = (int) $tag['prefix_id'];
+			$tag_data = $this->manager->get_tag($tag_id);
+			$tag_forum_names = $forum_names[$tag_id] ?? [];
 			$this->template->assign_block_vars('tags', [
 				'TAG_ID' => $tag_id,
 				'TAG_NAME' => utf8_htmlspecialchars($tag['prefix_tag']),
 				'TAG_COLOR' => '#' . $tag['prefix_color'],
 				'TAG_TEXT_COLOR' => $this->renderer->contrast_color($tag['prefix_color']),
 				'TAG_ENABLED' => (bool) $tag['prefix_enabled'],
-				'FORUM_NAMES' => $forum_names[$tag_id] ?? [],
+				'FORUM_IDS' => implode(',', array_map('intval', $tag_data['forum_ids'] ?? [])),
+				'FORUM_COUNT' => count($tag_forum_names),
+				'FORUM_NAMES' => array_map('utf8_htmlspecialchars', $tag_forum_names),
+				'SEARCH_TEXT' => utf8_htmlspecialchars($tag['prefix_tag'] . ' ' . implode(' ', $tag_forum_names)),
 				'U_EDIT' => $this->u_action . '&amp;action=edit&amp;tag_id=' . $tag_id,
 				'U_DELETE' => $this->u_action . '&amp;action=delete&amp;tag_id=' . $tag_id,
 				'U_TOGGLE' => $this->u_action . '&amp;action=toggle&amp;tag_id=' . $tag_id . '&amp;hash=' . generate_link_hash('toggle' . $tag_id),
@@ -150,6 +175,20 @@ class admin_controller
 			'prefix_enabled' => 1,
 			'forum_ids' => [],
 		];
+
+		$forum_rows = make_forum_select($editing['forum_ids'], false, false, false, true, false, true);
+		foreach ($forum_rows as $forum)
+		{
+			$forum_name = manager::decode_name($forum['forum_name']);
+			$this->template->assign_block_vars('forums', [
+				'FORUM_ID' => (int) $forum['forum_id'],
+				'FORUM_NAME' => utf8_htmlspecialchars($forum_name),
+				'DEPTH' => substr_count($forum['padding'], '&nbsp; &nbsp;'),
+				'S_POSTABLE' => (int) $forum['forum_type'] === FORUM_POST && !$forum['disabled'],
+				'S_SELECTED' => (bool) $forum['selected'],
+			]);
+		}
+
 		$this->template->assign_vars([
 			'U_ACTION' => $this->u_action,
 			'S_EDIT_TAG' => !empty($editing['prefix_id']),
@@ -157,7 +196,7 @@ class admin_controller
 			'TAG_NAME' => utf8_htmlspecialchars($editing['prefix_tag']),
 			'TAG_COLOR' => '#' . $editing['prefix_color'],
 			'TAG_ENABLED' => (bool) $editing['prefix_enabled'],
-			'S_FORUM_OPTIONS' => make_forum_select($editing['forum_ids'], false, false, true),
+			'TAG_TEXT_COLOR' => $this->renderer->contrast_color($editing['prefix_color']),
 		]);
 	}
 
@@ -171,7 +210,8 @@ class admin_controller
 	{
 		if (!$this->request->is_set_post('submit') || !check_form_key($this->form_key))
 		{
-			$this->trigger_message('FORM_INVALID', E_USER_WARNING);
+			$this->respond_error('FORM_INVALID');
+			return;
 		}
 
 		// phpBB's request API HTML-escapes strings. The manager accepts semantic
@@ -182,15 +222,18 @@ class admin_controller
 		$forum_ids = $this->request->variable('forum_ids', [0]);
 		if (trim($name) === '')
 		{
-			$this->trigger_message('TOPIC_TAG_NAME_REQUIRED', E_USER_WARNING);
+			$this->respond_error('TOPIC_TAG_NAME_REQUIRED', 'tag_name');
+			return;
 		}
 		if (manager::normalize_name($name) === '')
 		{
-			$this->trigger_message('TOPIC_TAG_NAME_TOO_LONG', E_USER_WARNING);
+			$this->respond_error('TOPIC_TAG_NAME_TOO_LONG', 'tag_name');
+			return;
 		}
 		if (manager::normalize_color($color) === '')
 		{
-			$this->trigger_message('TOPIC_TAG_COLOR_INVALID', E_USER_WARNING);
+			$this->respond_error('TOPIC_TAG_COLOR_INVALID', 'tag_color_text');
+			return;
 		}
 
 		if ($tag_id)
@@ -205,10 +248,20 @@ class admin_controller
 		}
 		if (!$tag)
 		{
-			$this->trigger_message('TOPIC_TAG_NOT_FOUND', E_USER_WARNING);
+			$this->respond_error('TOPIC_TAG_NOT_FOUND');
+			return;
 		}
 
 		$this->log($tag['prefix_tag'], $message);
+		if ($this->request->is_ajax())
+		{
+			$this->send_json_response([
+				'success' => true,
+				'message' => $this->language->lang('TOPIC_TAG_SAVED'),
+				'tag' => $this->present_tag($tag),
+			]);
+			return;
+		}
 		$this->trigger_message('TOPIC_TAG_SAVED');
 	}
 
@@ -223,17 +276,28 @@ class admin_controller
 		$tag = $this->manager->get_tag($tag_id);
 		if (!$tag)
 		{
-			$this->trigger_message('TOPIC_TAG_NOT_FOUND', E_USER_WARNING);
+			$this->respond_error('TOPIC_TAG_NOT_FOUND');
+			return;
 		}
 
 		if (confirm_box(true))
 		{
 			$this->manager->delete_tag($tag_id);
 			$this->log($tag['prefix_tag'], 'ACP_LOG_TAG_DELETED');
+			if ($this->request->is_ajax())
+			{
+				$this->send_json_response([
+					'success' => true,
+					'message' => $this->language->lang('TOPIC_TAG_DELETED'),
+					'tag_id' => $tag_id,
+				]);
+				return;
+			}
 			$this->trigger_message('TOPIC_TAG_DELETED');
+			return;
 		}
 
-		confirm_box(false, $this->language->lang('DELETE_TOPIC_TAG_CONFIRM'), build_hidden_fields([
+		confirm_box(false, $this->language->lang('DELETE_TOPIC_TAG_CONFIRM', utf8_htmlspecialchars($tag['prefix_tag'])), build_hidden_fields([
 			'mode' => 'manage',
 			'action' => 'delete',
 			'tag_id' => $tag_id,
@@ -248,18 +312,57 @@ class admin_controller
 	 */
 	public function toggle_tag(int $tag_id): void
 	{
-		if (!$this->check_hash('toggle' . $tag_id))
+		$is_post = $this->request->is_set_post('enabled');
+		if (($is_post && !check_form_key($this->form_key)) || (!$is_post && !$this->check_hash('toggle' . $tag_id)))
 		{
-			$this->trigger_message('FORM_INVALID', E_USER_WARNING);
+			$this->respond_error('FORM_INVALID');
+			return;
 		}
 		$tag = $this->manager->get_tag($tag_id);
-		if (!$tag || !$this->manager->set_enabled($tag_id, !$tag['prefix_enabled']))
+		$enabled = $is_post ? (bool) $this->request->variable('enabled', 0) : empty($tag['prefix_enabled']);
+		if (!$tag || !$this->manager->set_enabled($tag_id, $enabled))
 		{
-			$this->trigger_message('TOPIC_TAG_NOT_FOUND', E_USER_WARNING);
+			$this->respond_error('TOPIC_TAG_NOT_FOUND');
+			return;
 		}
 		if ($this->request->is_ajax())
 		{
-			$this->send_json_response(true);
+			$this->send_json_response([
+				'success' => true,
+				'message' => $this->language->lang($enabled ? 'TOPIC_TAG_ENABLED_NOTICE' : 'TOPIC_TAG_DISABLED_NOTICE'),
+				'tag_id' => $tag_id,
+				'enabled' => $enabled,
+			]);
+		}
+	}
+
+	/**
+	 * Replace the complete tag order from the AJAX drag-and-drop list.
+	 *
+	 * @return void
+	 */
+	public function reorder_tags(): void
+	{
+		if (!check_form_key($this->form_key))
+		{
+			$this->respond_error('FORM_INVALID');
+			return;
+		}
+
+		$tag_ids = $this->request->variable('tag_ids', [0]);
+		if (!$this->manager->reorder_tags($tag_ids))
+		{
+			$this->respond_error('TOPIC_TAG_ORDER_STALE');
+			return;
+		}
+
+		if ($this->request->is_ajax())
+		{
+			$this->send_json_response([
+				'success' => true,
+				'message' => $this->language->lang('TOPIC_TAG_ORDER_SAVED'),
+				'order' => array_map('intval', $tag_ids),
+			]);
 		}
 	}
 
@@ -274,15 +377,17 @@ class admin_controller
 	{
 		if (!$this->check_hash($direction . $tag_id))
 		{
-			$this->trigger_message('FORM_INVALID', E_USER_WARNING);
+			$this->respond_error('FORM_INVALID');
+			return;
 		}
 		if (!$this->manager->move_tag($tag_id, $direction))
 		{
-			$this->trigger_message('TOPIC_TAG_NOT_FOUND', E_USER_WARNING);
+			$this->respond_error('TOPIC_TAG_NOT_FOUND');
+			return;
 		}
 		if ($this->request->is_ajax())
 		{
-			$this->send_json_response(true);
+			$this->send_json_response(['success' => true]);
 		}
 	}
 
@@ -307,6 +412,58 @@ class admin_controller
 	protected function check_hash(string $hash): bool
 	{
 		return check_link_hash($this->request->variable('hash', ''), $hash);
+	}
+
+	/**
+	 * Build canonical tag data for client-side list updates.
+	 *
+	 * @param array $tag Tag data including forum identifiers
+	 * @return array
+	 */
+	protected function present_tag(array $tag): array
+	{
+		$tag_id = (int) $tag['prefix_id'];
+		$forum_names = $this->manager->get_forum_names_by_tag();
+		$action = str_replace('&amp;', '&', $this->u_action);
+
+		return [
+			'id' => $tag_id,
+			'name' => $tag['prefix_tag'],
+			'color' => '#' . $tag['prefix_color'],
+			'text_color' => $this->renderer->contrast_color($tag['prefix_color']),
+			'enabled' => (bool) $tag['prefix_enabled'],
+			'forum_ids' => array_map('intval', $tag['forum_ids'] ?? []),
+			'forum_names' => array_values($forum_names[$tag_id] ?? []),
+			'urls' => [
+				'edit' => $action . '&action=edit&tag_id=' . $tag_id,
+				'delete' => $action . '&action=delete&tag_id=' . $tag_id,
+				'toggle' => $action . '&action=toggle&tag_id=' . $tag_id . '&hash=' . generate_link_hash('toggle' . $tag_id),
+				'move_up' => $action . '&action=move_up&tag_id=' . $tag_id . '&hash=' . generate_link_hash('up' . $tag_id),
+				'move_down' => $action . '&action=move_down&tag_id=' . $tag_id . '&hash=' . generate_link_hash('down' . $tag_id),
+			],
+		];
+	}
+
+	/**
+	 * Return an inline AJAX error or phpBB's standard fallback message.
+	 *
+	 * @param string $message Language key
+	 * @param string $field   Related form field identifier
+	 * @return void
+	 */
+	protected function respond_error(string $message, string $field = ''): void
+	{
+		if ($this->request->is_ajax())
+		{
+			$this->send_json_response([
+				'success' => false,
+				'message' => $this->language->lang($message),
+				'field' => $field,
+			], 422);
+			return;
+		}
+
+		$this->trigger_message($message, E_USER_WARNING);
 	}
 
 	/**
@@ -338,12 +495,14 @@ class admin_controller
 	/**
 	 * Send AJAX action result.
 	 *
-	 * @param bool $content Action status
+	 * @param array $content Response data
+	 * @param int   $status  HTTP status code
 	 * @return void
 	 */
-	protected function send_json_response(bool $content): void
+	protected function send_json_response(array $content, int $status = 200): void
 	{
+		http_response_code($status);
 		$response = new json_response;
-		$response->send(['success' => $content]);
+		$response->send($content);
 	}
 }

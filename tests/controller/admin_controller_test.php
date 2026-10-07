@@ -59,19 +59,22 @@ class admin_controller_test extends \phpbb_test_case
 	public function test_display_settings_lists_tags_and_edit_form()
 	{
 		$this->manager->method('get_forum_names_by_tag')->willReturn(array(1 => array(
-			'Forum One', 'Forum Two', 'Forum Three', 'Forum Four', 'Forum Five',
+			'Forum One', 'Forum 😀 & More', 'Forum Three', 'Forum Four', 'Forum Five',
 		)));
 		$this->manager->method('get_tags')->willReturn(array(1 => array(
 			'prefix_id' => 1, 'prefix_tag' => '<Bug>', 'prefix_color' => 'D4351C', 'prefix_enabled' => 1,
 		)));
-		$this->renderer->method('contrast_color')->with('D4351C')->willReturn('#FFFFFF');
+		$this->renderer->method('contrast_color')->willReturnCallback(function ($color) {
+			return $color === 'D4351C' ? '#FFFFFF' : '#000000';
+		});
 		$this->template->expects(self::once())->method('assign_block_vars')->with('tags', self::callback(function ($row) {
 			return $row['TAG_NAME'] === '&lt;Bug&gt;'
-				&& $row['FORUM_NAMES'] === array('Forum One', 'Forum Two', 'Forum Three', 'Forum Four', 'Forum Five')
+				&& $row['FORUM_NAMES'] === array('Forum One', 'Forum 😀 &amp; More', 'Forum Three', 'Forum Four', 'Forum Five')
+				&& strpos($row['SEARCH_TEXT'], 'Forum 😀 &amp; More') !== false
 				&& $row['TAG_TEXT_COLOR'] === '#FFFFFF';
 		}));
 		$this->template->expects(self::once())->method('assign_vars')->with(self::callback(function ($vars) {
-			return $vars['TAG_ID'] === 0 && $vars['S_FORUM_OPTIONS'] === '#forum options#';
+			return $vars['TAG_ID'] === 0 && $vars['TAG_COLOR'] === '#4A76A8';
 		}));
 		$this->controller->display_settings();
 	}
@@ -92,9 +95,53 @@ class admin_controller_test extends \phpbb_test_case
 		$this->manager->expects(self::once())->method('get_tag')->with(1)->willReturn(array('prefix_enabled' => 1));
 		$this->manager->expects(self::once())->method('set_enabled')->with(1, false)->willReturn(true);
 
-		self::assertSame('{"success":true}', $this->capture_json_response(function () {
+		self::assertSame('{"success":true,"message":"TOPIC_TAG_DISABLED_NOTICE","tag_id":1,"enabled":false}', $this->capture_json_response(function () {
 			$this->controller->toggle_tag(1);
 		}));
+	}
+
+	public function test_ajax_post_toggle_sets_explicit_state(): void
+	{
+		$this->request->method('is_ajax')->willReturn(true);
+		$this->request->method('is_set_post')->with('enabled')->willReturn(true);
+		$this->request->method('variable')->willReturnCallback(function ($name, $default) {
+			return $name === 'enabled' ? 1 : $default;
+		});
+		$this->manager->expects(self::once())->method('get_tag')->with(1)->willReturn(array('prefix_enabled' => 0));
+		$this->manager->expects(self::once())->method('set_enabled')->with(1, true)->willReturn(true);
+
+		self::assertSame('{"success":true,"message":"TOPIC_TAG_ENABLED_NOTICE","tag_id":1,"enabled":true}', $this->capture_json_response(function () {
+			$this->controller->toggle_tag(1);
+		}));
+	}
+
+	public function test_ajax_reorder_saves_complete_order(): void
+	{
+		$this->request->method('is_ajax')->willReturn(true);
+		$this->request->method('variable')->willReturnCallback(function ($name, $default) {
+			return $name === 'tag_ids' ? array(3, 1, 2) : $default;
+		});
+		$this->manager->expects(self::once())->method('reorder_tags')->with(array(3, 1, 2))->willReturn(true);
+
+		self::assertSame('{"success":true,"message":"TOPIC_TAG_ORDER_SAVED","order":[3,1,2]}', $this->capture_json_response(function () {
+			$this->controller->reorder_tags();
+		}));
+	}
+
+	public function test_ajax_reorder_rejects_stale_order(): void
+	{
+		$this->request->method('is_ajax')->willReturn(true);
+		$this->request->method('variable')->willReturnCallback(function ($name, $default) {
+			return $name === 'tag_ids' ? array(3, 1) : $default;
+		});
+		$this->manager->method('reorder_tags')->willReturn(false);
+
+		$response = json_decode($this->capture_json_response(function () {
+			$this->controller->reorder_tags();
+		}), true);
+
+		self::assertFalse($response['success']);
+		self::assertSame('TOPIC_TAG_ORDER_STALE', $response['message']);
 	}
 
 	public function test_move_updates_order()
@@ -224,6 +271,58 @@ class admin_controller_test extends \phpbb_test_case
 		self::assertStringContainsString('TOPIC_TAG_SAVED', self::$triggered_message);
 	}
 
+	public function test_ajax_save_returns_canonical_tag_payload(): void
+	{
+		$this->request->method('is_ajax')->willReturn(true);
+		$this->request->method('is_set_post')->with('submit')->willReturn(true);
+		$this->request->method('variable')->willReturnCallback(function ($name, $default) {
+			return array(
+				'tag_name' => 'Security',
+				'tag_color' => '#AA00CC',
+				'tag_enabled' => 1,
+				'forum_ids' => array(2, 3),
+			)[$name] ?? $default;
+		});
+		$tag = array(
+			'prefix_id' => 9,
+			'prefix_tag' => 'Security',
+			'prefix_color' => 'AA00CC',
+			'prefix_enabled' => 1,
+			'forum_ids' => array(2, 3),
+		);
+		$this->manager->method('add_tag')->willReturn($tag);
+		$this->manager->method('get_forum_names_by_tag')->willReturn(array(9 => array('Forum 😀 & More', 'Forum Three')));
+		$this->renderer->method('contrast_color')->with('AA00CC')->willReturn('#FFFFFF');
+
+		$response = json_decode($this->capture_json_response(function () {
+			$this->controller->save_tag(0);
+		}), true);
+
+		self::assertTrue($response['success']);
+		self::assertSame(9, $response['tag']['id']);
+		self::assertSame(array(2, 3), $response['tag']['forum_ids']);
+		self::assertSame(array('Forum 😀 & More', 'Forum Three'), $response['tag']['forum_names']);
+		self::assertStringContainsString('action=delete&tag_id=9', $response['tag']['urls']['delete']);
+	}
+
+	public function test_ajax_save_validation_returns_field_error(): void
+	{
+		$this->request->method('is_ajax')->willReturn(true);
+		$this->request->method('is_set_post')->with('submit')->willReturn(true);
+		$this->request->method('variable')->willReturnCallback(function ($name, $default) {
+			return $name === 'tag_name' ? '' : $default;
+		});
+		$this->manager->expects(self::never())->method('add_tag');
+
+		$response = json_decode($this->capture_json_response(function () {
+			$this->controller->save_tag(0);
+		}), true);
+
+		self::assertFalse($response['success']);
+		self::assertSame('tag_name', $response['field']);
+		self::assertSame('TOPIC_TAG_NAME_REQUIRED', $response['message']);
+	}
+
 	/**
 	 * Test confirmed deletion removes tag and writes ACP log.
 	 */
@@ -239,6 +338,21 @@ class admin_controller_test extends \phpbb_test_case
 		$this->controller->delete_tag(1);
 
 		self::assertStringContainsString('TOPIC_TAG_DELETED', self::$triggered_message);
+	}
+
+	public function test_ajax_confirmed_delete_returns_deleted_identifier(): void
+	{
+		self::$confirmed = true;
+		$this->request->method('is_ajax')->willReturn(true);
+		$this->manager->method('get_tag')->with(1)->willReturn(array('prefix_tag' => 'Bug'));
+		$this->manager->expects(self::once())->method('delete_tag')->with(1)->willReturn(true);
+
+		$response = json_decode($this->capture_json_response(function () {
+			$this->controller->delete_tag(1);
+		}), true);
+
+		self::assertTrue($response['success']);
+		self::assertSame(1, $response['tag_id']);
 	}
 
 	/**
@@ -293,6 +407,7 @@ class admin_controller_test extends \phpbb_test_case
 			array('save', 'save_tag', array(2)),
 			array('delete', 'delete_tag', array(2)),
 			array('toggle', 'toggle_tag', array(2)),
+			array('reorder', 'reorder_tags', array()),
 			array('move_up', 'move_tag', array(2, 'up')),
 			array('move_down', 'move_tag', array(2, 'down')),
 		);
@@ -313,7 +428,7 @@ class admin_controller_test extends \phpbb_test_case
 				$this->manager, $this->renderer, $this->language, $this->log,
 				$this->request, $this->template, $this->user,
 			))
-			->setMethods(array('save_tag', 'delete_tag', 'toggle_tag', 'move_tag', 'display_settings'))
+			->setMethods(array('save_tag', 'delete_tag', 'toggle_tag', 'reorder_tags', 'move_tag', 'display_settings'))
 			->getMock();
 		$controller->expects(self::once())->method($method)->with(...$arguments);
 		$controller->expects(self::once())->method('display_settings')->with(false);
@@ -467,7 +582,8 @@ class admin_controller_test extends \phpbb_test_case
 
 		$previous_error_handler = null;
 		$previous_error_handler = set_error_handler(static function ($severity, $message, $file, $line, $context = null) use (&$previous_error_handler) {
-			if (strpos($message, 'Cannot modify header information') === 0)
+			if (strpos($message, 'Cannot modify header information') !== false
+				|| strpos($message, 'Cannot set response code - headers already sent') !== false)
 			{
 				return true;
 			}
@@ -515,7 +631,7 @@ function trigger_error($message, $error = E_USER_NOTICE)
 
 function make_forum_select()
 {
-	return '#forum options#';
+	return array();
 }
 
 function check_link_hash()
