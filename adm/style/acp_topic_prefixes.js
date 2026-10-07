@@ -1,15 +1,15 @@
 /* global phpbb */
-(function($) {
+(($) => {
 	'use strict';
 
-	var $app = $('#topic-tag-app');
+	const $app = $('#topic-tag-app');
 	if (!$app.length) {
 		return;
 	}
 
 	$app.addClass('is-js');
 
-	var $list = $('#topic-tag-list'),
+	const $list = $('#topic-tag-list'),
 		$form = $('#acp_topic_tag'),
 		$name = $('#tag_name'),
 		$color = $('#tag_color'),
@@ -28,8 +28,8 @@
 		$selectedCount = $('#topic-tag-forum-selected'),
 		$resultCount = $('#topic-tag-result-count'),
 		$noResults = $('#topic-tag-no-results'),
-		$orderHint = $('#topic-tag-order-hint'),
-		$selectedRow = $(),
+		$orderHint = $('#topic-tag-order-hint');
+	let $selectedRow = $(),
 		dirty = false,
 		draggedRow = null,
 		dragImage = null,
@@ -48,23 +48,23 @@
 			return;
 		}
 		$notice.removeClass('is-visible');
-		window.setTimeout(function() {
+		window.setTimeout(() => {
 			$notice.remove();
 		}, 180);
 	}
 
 	function showNotice(message, isError) {
-		var $notice = $noticeTemplate.clone().removeAttr('id hidden').toggleClass('is-error', !!isError)
-			.attr({role: isError ? 'alert' : 'status', 'aria-live': isError ? 'assertive' : 'polite'});
+		const $notice = $noticeTemplate.clone().removeAttr('id hidden').toggleClass('is-error', !!isError)
+			.attr({ role: isError ? 'alert' : 'status', 'aria-live': isError ? 'assertive' : 'polite' });
 		$notice.find('#topic-tag-notice-message').removeAttr('id').text(message);
 		$notices.prepend($notice);
 		$notice[0].getBoundingClientRect();
 		$notice.addClass('is-visible');
-		$notices.children('.topic-tag-notice').slice(4).each(function() {
-			removeNotice($(this), true);
+		$notices.children('.topic-tag-notice').slice(4).each((index, notice) => {
+			removeNotice($(notice), true);
 		});
 		if (!isError) {
-			$notice.data('notice-timer', window.setTimeout(function() {
+			$notice.data('notice-timer', window.setTimeout(() => {
 				removeNotice($notice, false);
 			}, 4000));
 		}
@@ -86,47 +86,47 @@
 	}
 
 	function requestError(xhr) {
-		var response = responseData(xhr),
+		const response = responseData(xhr),
 			message = response.message || $app.data('request-failed');
 		showNotice(message, true);
 		return response;
 	}
 
 	function contrastColor(hex) {
-		var clean = hex.replace('#', ''), channels = [], luminance, whiteContrast, blackContrast, i, channel;
+		const clean = hex.replace('#', ''), channels = [];
 		if (!/^[0-9a-f]{6}$/i.test(clean)) {
 			return '#000000';
 		}
-		for (i = 0; i < 3; i++) {
-			channel = parseInt(clean.substr(i * 2, 2), 16) / 255;
+		for (let i = 0; i < 3; i++) {
+			const channel = parseInt(clean.substr(i * 2, 2), 16) / 255;
 			channels.push(channel <= 0.03928 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4));
 		}
-		luminance = 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
-		whiteContrast = 1.05 / (luminance + 0.05);
-		blackContrast = (luminance + 0.05) / 0.05;
+		const luminance = 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2],
+			whiteContrast = 1.05 / (luminance + 0.05),
+			blackContrast = (luminance + 0.05) / 0.05;
 		return whiteContrast >= blackContrast ? '#FFFFFF' : '#000000';
 	}
 
 	function normalizeColor(value) {
-		value = String(value || '').trim().toUpperCase();
-		if (value && value.charAt(0) !== '#') {
-			value = '#' + value;
+		let normalized = String(value || '').trim().toUpperCase();
+		if (normalized && normalized.charAt(0) !== '#') {
+			normalized = '#' + normalized;
 		}
-		return value;
+		return normalized;
 	}
 
 	function validateColor(showError) {
-		var valid = /^#[0-9A-F]{6}$/.test(normalizeColor($colorText.val()));
+		const valid = /^#[0-9A-F]{6}$/.test(normalizeColor($colorText.val()));
 		$colorText.attr('aria-invalid', valid ? 'false' : 'true');
 		$colorError.prop('hidden', valid || !showError);
 		return valid;
 	}
 
 	function updatePreview() {
-		var value = normalizeColor($colorText.val()), valid = /^#[0-9A-F]{6}$/.test(value);
+		const value = normalizeColor($colorText.val()), valid = /^#[0-9A-F]{6}$/.test(value);
 		$preview.text($name.val().trim() || $app.data('preview'));
 		if (valid) {
-			$preview.css({backgroundColor: value, color: contrastColor(value)});
+			$preview.css({ backgroundColor: value, color: contrastColor(value) });
 		}
 	}
 
@@ -151,7 +151,7 @@
 	}
 
 	function forumIdsForRow($row) {
-		var value = String($row.attr('data-forum-ids') || '');
+		const value = String($row.attr('data-forum-ids') || '');
 		return value ? value.split(',') : [];
 	}
 
@@ -161,12 +161,12 @@
 	}
 
 	function updateForumCount() {
-		var count = $forumPicker.find('input[type="checkbox"]:checked').length;
+		const count = $forumPicker.find('input[type="checkbox"]:checked').length;
 		$selectedCount.text(format($app.data('selected-count'), count));
 	}
 
 	function loadEditor($row) {
-		var ids = forumIdsForRow($row), tagId = $row.data('tag-id');
+		const ids = forumIdsForRow($row), tagId = $row.data('tag-id');
 		$selectedRow.removeClass('is-selected');
 		$selectedRow = $row.addClass('is-selected');
 		$form.find('input[name="tag_id"]').val(tagId);
@@ -174,8 +174,8 @@
 		$color.val($row.attr('data-tag-color'));
 		$colorText.val($row.attr('data-tag-color').toUpperCase());
 		$enabled.prop('checked', $row.attr('data-tag-enabled') === '1');
-		$forumPicker.find('input[type="checkbox"]').each(function() {
-			this.checked = ids.indexOf(this.value) !== -1;
+		$forumPicker.find('input[type="checkbox"]').each((index, checkbox) => {
+			checkbox.checked = ids.indexOf(checkbox.value) !== -1;
 		});
 		$('#topic-tag-editor-title').text($app.data('edit-title'));
 		resetForumSearch();
@@ -205,7 +205,7 @@
 	}
 
 	function updateEnabledState($row, enabled) {
-		var $toggle = $row.find('.topic-tag-toggle');
+		const $toggle = $row.find('.topic-tag-toggle');
 		$row.attr('data-tag-enabled', enabled ? '1' : '0').toggleClass('is-disabled', !enabled);
 		$toggle.attr('aria-checked', enabled ? 'true' : 'false');
 		$toggle.find('.topic-tag-state-current').text($toggle.data(enabled ? 'enabled-label' : 'disabled-label'));
@@ -215,17 +215,17 @@
 	}
 
 	function forumNamesFromIds(ids) {
-		var names = [];
-		$forumPicker.find('input[type="checkbox"]').each(function() {
-			if (ids.indexOf(parseInt(this.value, 10)) !== -1) {
-				names.push($(this).siblings('span').text());
+		const names = [];
+		$forumPicker.find('input[type="checkbox"]').each((index, checkbox) => {
+			if (ids.indexOf(parseInt(checkbox.value, 10)) !== -1) {
+				names.push($(checkbox).siblings('span').text());
 			}
 		});
 		return names;
 	}
 
 	function populateRow($row, tag) {
-		var names = tag.forum_names || forumNamesFromIds(tag.forum_ids),
+		const names = tag.forum_names || forumNamesFromIds(tag.forum_ids),
 			previewText = names.join(', '),
 			$previewNames = $row.find('.topic-tag-forum-preview');
 		$row.attr({
@@ -237,7 +237,7 @@
 			'data-search': (tag.name + ' ' + names.join(' ')).toLowerCase()
 		});
 		$row.data('tag-id', tag.id);
-		$row.find('.topic-tag-summary .topic-tag').text(tag.name).css({backgroundColor: tag.color, color: tag.text_color});
+		$row.find('.topic-tag-summary .topic-tag').text(tag.name).css({ backgroundColor: tag.color, color: tag.text_color });
 		$row.find('.topic-tag-forum-summary strong').text(format($app.data('forum-count'), names.length));
 		$previewNames.text(previewText);
 		if (previewText) {
@@ -254,12 +254,12 @@
 	}
 
 	function createRow(tag) {
-		var $row = $('#topic-tag-row-template').clone();
+		const $row = $('#topic-tag-row-template').clone();
 		$row.removeAttr('id hidden').removeClass('topic-tag-row-template').attr('draggable', 'false');
 		populateRow($row, tag);
 		$list.find('.topic-tags-empty').remove();
 		$list.append($row);
-		phpbb.ajaxify({selector: $row.find('[data-ajax="tp_delete"]'), callback: 'tp_delete'});
+		phpbb.ajaxify({ selector: $row.find('[data-ajax="tp_delete"]'), callback: 'tp_delete' });
 		return $row;
 	}
 
@@ -277,18 +277,19 @@
 	}
 
 	function updateOrderActions() {
-		var $rows = itemRows(), disableAll = orderSaving || $tagSearch.val().trim() || $statusFilter.val() !== 'all';
-		$rows.each(function(index) {
-			setOrderActionState($(this).find('.topic-tag-move-up'), disableAll || index === 0);
-			setOrderActionState($(this).find('.topic-tag-move-down'), disableAll || index === $rows.length - 1);
+		const $rows = itemRows(), disableAll = orderSaving || $tagSearch.val().trim() || $statusFilter.val() !== 'all';
+		$rows.each((index, row) => {
+			setOrderActionState($(row).find('.topic-tag-move-up'), disableAll || index === 0);
+			setOrderActionState($(row).find('.topic-tag-move-down'), disableAll || index === $rows.length - 1);
 		});
 	}
 
 	function updateListFilter() {
-		var query = $tagSearch.val().trim().toLowerCase(), status = $statusFilter.val(), visible = 0,
+		const query = $tagSearch.val().trim().toLowerCase(), status = $statusFilter.val(),
 			filterActive = query !== '' || status !== 'all', $rows = itemRows();
-		$rows.each(function() {
-			var $row = $(this), enabled = $row.attr('data-tag-enabled') === '1',
+		let visible = 0;
+		$rows.each((index, row) => {
+			const $row = $(row), enabled = $row.attr('data-tag-enabled') === '1',
 				matchesText = String($row.attr('data-search') || '').toLowerCase().indexOf(query) !== -1,
 				matchesStatus = status === 'all' || (status === 'enabled' && enabled) || (status === 'disabled' && !enabled),
 				show = matchesText && matchesStatus;
@@ -308,39 +309,39 @@
 	}
 
 	function currentOrder() {
-		return itemRows().map(function() {
-			return parseInt($(this).attr('data-tag-id'), 10);
+		return itemRows().map((index, row) => {
+			return parseInt($(row).attr('data-tag-id'), 10);
 		}).get();
 	}
 
 	function restoreOrder(order) {
-		$.each(order, function(index, id) {
-			var $row = itemRows().filter(function() {
-				return parseInt($(this).attr('data-tag-id'), 10) === id;
+		order.forEach((id) => {
+			const $row = itemRows().filter((index, row) => {
+				return parseInt($(row).attr('data-tag-id'), 10) === id;
 			}).first();
 			$list.append($row);
 		});
 	}
 
 	function persistOrder(oldOrder) {
-		var data = formTokenData(), $rows = itemRows(), $actions = $rows.find('.topic-tag-actions');
+		const data = formTokenData(), $rows = itemRows(), $actions = $rows.find('.topic-tag-actions');
 		orderSaving = true;
 		updateOrderActions();
 		data.action = 'reorder';
 		data.tag_ids = currentOrder();
 		$actions.addClass('is-saving');
 		$rows.find('.topic-tag-drag').prop('disabled', true);
-		$.ajax({url: $app.data('action'), type: 'POST', data: data, cache: false})
-			.done(function(response) {
+		$.ajax({ url: $app.data('action'), type: 'POST', data: data, cache: false })
+			.done((response) => {
 				if (response.success) {
 					showNotice(response.message, false);
 				}
 			})
-			.fail(function(xhr) {
+			.fail((xhr) => {
 				restoreOrder(oldOrder);
 				requestError(xhr);
 			})
-			.always(function() {
+			.always(() => {
 				orderSaving = false;
 				$actions.removeClass('is-saving');
 				updateListFilter();
@@ -348,7 +349,7 @@
 	}
 
 	function toggleRow($row, desired, source) {
-		var data = formTokenData(), $toggle = $row.find('.topic-tag-toggle');
+		const data = formTokenData(), $toggle = $row.find('.topic-tag-toggle');
 		if ($toggle.hasClass('is-saving')) {
 			return;
 		}
@@ -356,27 +357,27 @@
 		data.tag_id = $row.attr('data-tag-id');
 		data.enabled = desired ? 1 : 0;
 		$toggle.addClass('is-saving');
-		$.ajax({url: $app.data('action'), type: 'POST', data: data, cache: false})
-			.done(function(response) {
+		$.ajax({ url: $app.data('action'), type: 'POST', data: data, cache: false })
+			.done((response) => {
 				if (response.success) {
 					updateEnabledState($row, response.enabled);
 					updateListFilter();
 					showNotice(response.message, false);
 				}
 			})
-			.fail(function(xhr) {
+			.fail((xhr) => {
 				if (source === 'editor') {
 					$enabled.prop('checked', !desired);
 				}
 				requestError(xhr);
 			})
-			.always(function() {
+			.always(() => {
 				$toggle.removeClass('is-saving');
 			});
 	}
 
 	phpbb.addAjaxCallback('tp_delete', function(response) {
-		var $row = $(this).closest('.topic-tag-item');
+		const $row = $(this).closest('.topic-tag-item');
 		if (!response.success) {
 			return;
 		}
@@ -388,12 +389,12 @@
 		showNotice(response.message, false);
 	});
 
-	$list[0].addEventListener('click', function(event) {
-		var $delete = $(event.target).closest('[data-ajax="tp_delete"]'), $row;
+	$list[0].addEventListener('click', (event) => {
+		const $delete = $(event.target).closest('[data-ajax="tp_delete"]');
 		if (!$delete.length) {
 			return;
 		}
-		$row = $delete.closest('.topic-tag-item');
+		const $row = $delete.closest('.topic-tag-item');
 		if (dirty && $selectedRow.is($row)) {
 			if (!window.confirm($app.data('discard'))) {
 				event.preventDefault();
@@ -403,35 +404,35 @@
 	}, true);
 
 	$list.on('click', '[data-tag-edit]', function(event) {
-		var $row = $(this).closest('.topic-tag-item');
+		const $row = $(this).closest('.topic-tag-item');
 		event.preventDefault();
 		if ($selectedRow.is($row)) {
 			return;
 		}
-		confirmDiscard(function() {
+		confirmDiscard(() => {
 			loadEditor($row);
 			if (window.matchMedia && window.matchMedia('(max-width: 980px)').matches) {
-				document.querySelector('.topic-tag-inspector').scrollIntoView({behavior: 'smooth', block: 'start'});
+				document.querySelector('.topic-tag-inspector').scrollIntoView({ behavior: 'smooth', block: 'start' });
 			}
 		});
 	});
 
-	$('.topic-tag-new').on('click', function() {
-		confirmDiscard(function() {
+	$('.topic-tag-new').on('click', () => {
+		confirmDiscard(() => {
 			loadNewEditor();
 			$name.trigger('focus');
 		});
 	});
 
-	$('#topic-tag-cancel').on('click', function(event) {
+	$('#topic-tag-cancel').on('click', (event) => {
 		event.preventDefault();
-		confirmDiscard(function() {
+		confirmDiscard(() => {
 			loadNewEditor();
 		});
 	});
 
 	$list.on('click', '.topic-tag-toggle', function(event) {
-		var $row = $(this).closest('.topic-tag-item');
+		const $row = $(this).closest('.topic-tag-item');
 		event.preventDefault();
 		toggleRow($row, $row.attr('data-tag-enabled') !== '1', 'row');
 	});
@@ -451,7 +452,7 @@
 		}
 	});
 
-	$name.on('input', function() {
+	$name.on('input', () => {
 		setDirty(true);
 		updatePreview();
 	});
@@ -463,12 +464,12 @@
 		validateColor(false);
 	});
 
-	$colorText.on('input', function() {
+	$colorText.on('input', () => {
 		setDirty(true);
 		updatePreview();
 		validateColor(false);
 	}).on('blur', function() {
-		var value = normalizeColor(this.value);
+		const value = normalizeColor(this.value);
 		if (/^#[0-9A-F]{6}$/.test(value)) {
 			this.value = value;
 			$color.val(value);
@@ -477,25 +478,25 @@
 		updatePreview();
 	});
 
-	$forumPicker.on('change', 'input[type="checkbox"]', function() {
+	$forumPicker.on('change', 'input[type="checkbox"]', () => {
 		setDirty(true);
 		updateForumCount();
 	});
 
 	$forumSearch.on('input', function() {
-		var query = this.value.trim().toLowerCase();
-		$forumPicker.children().each(function() {
-			$(this).prop('hidden', String($(this).attr('data-forum-name') || '').toLowerCase().indexOf(query) === -1);
+		const query = this.value.trim().toLowerCase();
+		$forumPicker.children().each((index, forum) => {
+			$(forum).prop('hidden', String($(forum).attr('data-forum-name') || '').toLowerCase().indexOf(query) === -1);
 		});
 	});
 
-	$('#topic-tag-select-visible').on('click', function() {
+	$('#topic-tag-select-visible').on('click', () => {
 		$forumPicker.find('.topic-tag-forum-option:not([hidden]) input').prop('checked', true);
 		setDirty(true);
 		updateForumCount();
 	});
 
-	$('#topic-tag-clear-forums').on('click', function() {
+	$('#topic-tag-clear-forums').on('click', () => {
 		$forumPicker.find('input[type="checkbox"]').prop('checked', false);
 		setDirty(true);
 		updateForumCount();
@@ -504,13 +505,13 @@
 	$tagSearch.add($statusFilter).on('input change', updateListFilter);
 
 	$list.on('click', '.topic-tag-move-up, .topic-tag-move-down', function(event) {
-		var $link = $(this), $row = $link.closest('.topic-tag-item'), oldOrder = currentOrder(), $sibling;
+		const $link = $(this), $row = $link.closest('.topic-tag-item'), oldOrder = currentOrder();
 		if ($link.attr('aria-disabled') === 'true' || orderSaving || $tagSearch.val().trim() || $statusFilter.val() !== 'all') {
 			event.preventDefault();
 			return;
 		}
 		event.preventDefault();
-		$sibling = $link.hasClass('topic-tag-move-up') ? $row.prev('.topic-tag-item') : $row.next('.topic-tag-item');
+		const $sibling = $link.hasClass('topic-tag-move-up') ? $row.prev('.topic-tag-item') : $row.next('.topic-tag-item');
 		if (!$sibling.length) {
 			return;
 		}
@@ -546,13 +547,12 @@
 	});
 
 	$list.on('dragover', '.topic-tag-item', function(event) {
-		var rect;
 		if (!draggedRow || this === draggedRow) {
 			return;
 		}
 		event.preventDefault();
 		event.originalEvent.dataTransfer.dropEffect = 'move';
-		rect = this.getBoundingClientRect();
+		const rect = this.getBoundingClientRect();
 		if (event.originalEvent.clientY < rect.top + rect.height / 2) {
 			$(draggedRow).insertBefore(this);
 		} else {
@@ -560,14 +560,14 @@
 		}
 	});
 
-	$list.on('dragover', function(event) {
+	$list.on('dragover', (event) => {
 		if (draggedRow) {
 			event.preventDefault();
 			event.originalEvent.dataTransfer.dropEffect = 'move';
 		}
 	});
 
-	$list.on('drop', function(event) {
+	$list.on('drop', (event) => {
 		if (!draggedRow) {
 			return;
 		}
@@ -577,7 +577,7 @@
 	});
 
 	$list.on('dragend', '.topic-tag-item', function() {
-		var changed = previousOrder.join(',') !== currentOrder().join(',');
+		const changed = previousOrder.join(',') !== currentOrder().join(',');
 		$(this).removeClass('is-dragging').attr('draggable', 'false');
 		if (dragImage) {
 			document.body.removeChild(dragImage);
@@ -593,7 +593,7 @@
 	});
 
 	$form.on('submit', function(event) {
-		var $submit = $form.find('input[type="submit"]'), creating, data;
+		const $submit = $form.find('input[type="submit"]');
 		event.preventDefault();
 		$formError.prop('hidden', true).empty();
 		if (!this.checkValidity()) {
@@ -606,22 +606,20 @@
 		}
 		$colorText.val(normalizeColor($colorText.val()));
 		$color.val($colorText.val());
-		creating = parseInt($form.find('input[name="tag_id"]').val(), 10) === 0;
-		data = $form.serialize() + '&submit=1';
+		const creating = parseInt($form.find('input[name="tag_id"]').val(), 10) === 0,
+			data = $form.serialize() + '&submit=1';
 		$submit.prop('disabled', true);
-		$.ajax({url: $form.attr('action'), type: 'POST', data: data, cache: false})
-			.done(function(response) {
-				var $row;
+		$.ajax({ url: $form.attr('action'), type: 'POST', data: data, cache: false })
+			.done((response) => {
 				if (!response.success) {
 					return;
 				}
 				if (creating) {
-					$row = createRow(response.tag);
+					createRow(response.tag);
 					loadNewEditor();
 				} else {
-					$row = $selectedRow;
-					populateRow($row, response.tag);
-					loadEditor($row);
+					populateRow($selectedRow, response.tag);
+					loadEditor($selectedRow);
 				}
 				updateListFilter();
 				showNotice(response.message, false);
@@ -629,20 +627,20 @@
 					$name.trigger('focus');
 				}
 			})
-			.fail(function(xhr) {
-				var response = responseData(xhr), field;
+			.fail((xhr) => {
+				const response = responseData(xhr),
+					field = response.field ? document.getElementById(response.field) : null;
 				$formError.text(response.message || $app.data('request-failed')).prop('hidden', false);
-				field = response.field ? document.getElementById(response.field) : null;
 				if (field) {
 					field.focus();
 				}
 			})
-			.always(function() {
+			.always(() => {
 				$submit.prop('disabled', false);
 			});
 	});
 
-	$(window).on('beforeunload', function() {
+	$(window).on('beforeunload', () => {
 		if (dirty) {
 			return $app.data('discard');
 		}
@@ -653,10 +651,10 @@
 	updateForumCount();
 	updatePreview();
 	validateColor(false);
-	var initialId = parseInt($form.find('input[name="tag_id"]').val(), 10);
+	const initialId = parseInt($form.find('input[name="tag_id"]').val(), 10);
 	if (initialId) {
-		var $initial = itemRows().filter(function() {
-			return parseInt($(this).attr('data-tag-id'), 10) === initialId;
+		const $initial = itemRows().filter((index, row) => {
+			return parseInt($(row).attr('data-tag-id'), 10) === initialId;
 		}).first();
 		if ($initial.length) {
 			$selectedRow = $initial.addClass('is-selected');
