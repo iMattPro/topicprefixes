@@ -55,7 +55,7 @@
 			<div id="topic-tag-list" class="topic-tag-list" role="list">
 			{% for tag in loops.tags %}
 				<div class="topic-tag-item{% if not tag.TAG_ENABLED %} is-disabled{% endif %}"
-					role="listitem" draggable="true" data-tag-id="{{ tag.TAG_ID }}"
+					role="listitem" draggable="false" data-tag-id="{{ tag.TAG_ID }}"
 					data-tag-name="{{ tag.TAG_NAME }}" data-tag-color="{{ tag.TAG_COLOR }}"
 					data-tag-text-color="{{ tag.TAG_TEXT_COLOR }}" data-tag-enabled="{{ tag.TAG_ENABLED ? '1' : '0' }}"
 					data-forum-ids="{{ tag.FORUM_IDS }}" data-search="{{ tag.SEARCH_TEXT }}">

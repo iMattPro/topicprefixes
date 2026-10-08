@@ -280,10 +280,14 @@
 	border-bottom: 1px solid #E7E9EB;
 	display: grid;
 	gap: 10px;
-	grid-template-columns: 24px minmax(0, 1fr) auto auto;
+	grid-template-columns: minmax(0, 1fr) auto auto;
 	min-height: 64px;
 	padding: 9px 12px;
 	transition: background-color 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+}
+
+.topic-tag-app.is-js .topic-tag-item {
+	grid-template-columns: 24px minmax(0, 1fr) auto auto;
 }
 
 .topic-tag-item:last-child {
@@ -700,17 +704,29 @@
 
 @media (max-width: 1250px) {
 	.topic-tag-item {
-		grid-template-columns: 24px minmax(0, 1fr) auto;
+		grid-template-columns: minmax(0, 1fr) auto;
 	}
 
 	.topic-tag-toggle {
-		grid-column: 2;
+		grid-column: 1;
 		grid-row: 2;
 	}
 
 	.topic-tag-actions {
-		grid-column: 3;
+		grid-column: 2;
 		grid-row: 1 / span 2;
+	}
+
+	.topic-tag-app.is-js .topic-tag-item {
+		grid-template-columns: 24px minmax(0, 1fr) auto;
+	}
+
+	.topic-tag-app.is-js .topic-tag-toggle {
+		grid-column: 2;
+	}
+
+	.topic-tag-app.is-js .topic-tag-actions {
+		grid-column: 3;
 	}
 }
 
@@ -751,16 +767,19 @@
 	}
 
 	.topic-tag-item {
+		grid-template-columns: minmax(120px, 1fr) auto;
+	}
+
+	.topic-tag-app.is-js .topic-tag-item {
 		grid-template-columns: 20px minmax(120px, 1fr) auto;
 	}
 
-	.topic-tag-toggle {
+	.topic-tag-app.is-js .topic-tag-toggle {
 		grid-column: 2;
 	}
 
-	.topic-tag-actions {
+	.topic-tag-app.is-js .topic-tag-actions {
 		grid-column: 3;
-		grid-row: 1 / span 2;
 	}
 
 	.topic-tag-state,
