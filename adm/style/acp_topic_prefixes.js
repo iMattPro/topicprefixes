@@ -30,6 +30,7 @@
 		$noResults = $('#topic-tag-no-results'),
 		$orderHint = $('#topic-tag-order-hint');
 	let $selectedRow = $(),
+		saving = false,
 		dirty = false,
 		draggedRow = null,
 		dragImage = null,
@@ -136,6 +137,9 @@
 	}
 
 	function confirmDiscard(callback) {
+		if (saving) {
+			return false;
+		}
 		if (dirty && !window.confirm($app.data('discard'))) {
 			return false;
 		}
@@ -390,6 +394,11 @@
 	});
 
 	$list[0].addEventListener('click', (event) => {
+		if (saving) {
+			event.preventDefault();
+			event.stopImmediatePropagation();
+			return;
+		}
 		const $delete = $(event.target).closest('[data-ajax="tp_delete"]');
 		if (!$delete.length) {
 			return;
@@ -595,6 +604,9 @@
 	$form.on('submit', function(event) {
 		const $submit = $form.find('input[type="submit"]');
 		event.preventDefault();
+		if (saving || orderSaving || $list.find('.is-saving').length || draggedRow) {
+			return;
+		}
 		$formError.prop('hidden', true).empty();
 		if (!this.checkValidity()) {
 			this.reportValidity();
@@ -607,9 +619,18 @@
 		$colorText.val(normalizeColor($colorText.val()));
 		$color.val($colorText.val());
 		const creating = parseInt($form.find('input[name="tag_id"]').val(), 10) === 0,
-			data = $form.serialize() + '&submit=1';
+			data = $form.serialize() + '&submit=1',
+			$origin = $selectedRow,
+			$controls = $app.find('input, button, select, textarea').filter(':enabled');
+		saving = true;
+		$controls.prop('disabled', true);
 		$submit.prop('disabled', true);
 		$.ajax({ url: $form.attr('action'), type: 'POST', data: data, cache: false })
+			.always(() => {
+				saving = false;
+				$controls.prop('disabled', false);
+				$submit.prop('disabled', false);
+			})
 			.done((response) => {
 				if (!response.success) {
 					return;
@@ -618,8 +639,8 @@
 					createRow(response.tag);
 					loadNewEditor();
 				} else {
-					populateRow($selectedRow, response.tag);
-					loadEditor($selectedRow);
+					populateRow($origin, response.tag);
+					loadEditor($origin);
 				}
 				updateListFilter();
 				showNotice(response.message, false);
@@ -634,9 +655,6 @@
 				if (field) {
 					field.focus();
 				}
-			})
-			.always(() => {
-				$submit.prop('disabled', false);
 			});
 	});
 
