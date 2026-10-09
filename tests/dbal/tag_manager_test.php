@@ -130,6 +130,14 @@ class tag_manager_test extends tags_base
 		self::assertSame(array(2, 1, 3, 4), array_keys($manager->get_tags()));
 	}
 
+	public function test_move_resolves_tied_legacy_order(): void
+	{
+		$this->db->sql_query('UPDATE phpbb_topic_prefixes SET prefix_order = 1 WHERE prefix_id = 2');
+		$manager = $this->create_tag_manager();
+		self::assertTrue($manager->move_tag(2, 'up'));
+		self::assertSame([2, 1, 3, 4], array_keys($manager->get_tags()));
+	}
+
 	public function test_reorder_replaces_complete_global_order()
 	{
 		$manager = $this->create_tag_manager();

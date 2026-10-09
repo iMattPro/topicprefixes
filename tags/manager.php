@@ -334,6 +334,13 @@ class manager
 		$current_order = (int) $tags[$current]['prefix_order'];
 		$target_id = (int) $tags[$target]['prefix_id'];
 		$target_order = (int) $tags[$target]['prefix_order'];
+		if ($current_order === $target_order)
+		{
+			$swap = $tags[$current];
+			$tags[$current] = $tags[$target];
+			$tags[$target] = $swap;
+			return $this->reorder_tags(array_column($tags, 'prefix_id'));
+		}
 		$order = $this->db->sql_case(
 			'prefix_id = ' . $current_id,
 			(string) $target_order,
