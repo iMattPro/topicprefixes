@@ -176,7 +176,7 @@ class admin_controller
 			'forum_ids' => [],
 		];
 
-		$forum_rows = make_forum_select($editing['forum_ids'], false, false, false, true, false, true);
+		$forum_rows = make_forum_select($editing['forum_ids'], false, true, false, true, false, true);
 		foreach ($forum_rows as $forum)
 		{
 			$forum_name = manager::decode_name($forum['forum_name']);
