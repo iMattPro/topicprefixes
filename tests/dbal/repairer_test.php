@@ -43,7 +43,7 @@ class repairer_test extends tags_base
 		self::assertSame(2, $this->count_rows('phpbb_topic_prefixes_topics', 'prefix_id = ' . $target_id));
 	}
 
-	public function test_split_reuses_tags_deduplicates_relationships_and_cleans_exact_titles(): void
+	public function test_split_reuses_tags_deduplicates_relationships_and_preserves_titles(): void
 	{
 		$this->db->sql_query("UPDATE phpbb_topic_prefixes SET prefix_tag = '(A)(B)' WHERE prefix_id = 1");
 		$this->db->sql_query("UPDATE phpbb_topic_prefixes SET prefix_tag = 'B', prefix_enabled = 0 WHERE prefix_id = 2");
@@ -61,17 +61,11 @@ class repairer_test extends tags_base
 		]]);
 		$this->db->sql_query("UPDATE phpbb_forums
 			SET forum_last_post_id = 100, forum_last_post_subject = '(A)(B) Topic'
-			WHERE forum_id = 2");
+			WHERE forum_id IN (2, 3)");
 		$this->create_tag_manager()->get_tags();
 
 		$preview = $this->create_repairer()->preview(1, ['A', 'B']);
 		self::assertSame(2, $preview['topic_count']);
-		self::assertSame([
-			'topic_title' => 1,
-			'post_subject' => 1,
-			'topic_last_post_subject' => 1,
-			'forum_last_post_subject' => 1,
-		], $preview['cleanup']);
 		self::assertFalse($preview['targets'][0]['existing']);
 		self::assertTrue($preview['targets'][1]['existing']);
 		self::assertSame(2, $preview['targets'][1]['prefix_id']);
@@ -89,11 +83,11 @@ class repairer_test extends tags_base
 		self::assertSame(1, $this->count_rows('phpbb_topic_prefixes_topics', 'topic_id = 11 AND prefix_id = 2'));
 		self::assertSame(2, $this->count_rows('phpbb_topic_prefixes_forums', "prefix_id = $a_id"));
 		self::assertSame(2, $this->count_rows('phpbb_topic_prefixes_forums', 'prefix_id = 2'));
-		self::assertSame('Topic', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 10', 'topic_title'));
+		self::assertSame('(A)(B) Topic', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 10', 'topic_title'));
 		self::assertSame('(A)(B)Different', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 11', 'topic_title'));
-		self::assertSame('Topic', $this->field('SELECT post_subject FROM phpbb_posts WHERE post_id = 100', 'post_subject'));
-		self::assertSame('Topic', $this->field('SELECT topic_last_post_subject FROM phpbb_topics WHERE topic_id = 10', 'topic_last_post_subject'));
-		self::assertSame('Topic', $this->field('SELECT forum_last_post_subject FROM phpbb_forums WHERE forum_id = 2', 'forum_last_post_subject'));
+		self::assertSame('(A)(B) Topic', $this->field('SELECT post_subject FROM phpbb_posts WHERE post_id = 100', 'post_subject'));
+		self::assertSame('(A)(B) Topic', $this->field('SELECT topic_last_post_subject FROM phpbb_topics WHERE topic_id = 10', 'topic_last_post_subject'));
+		self::assertSame('(A)(B) Topic', $this->field('SELECT forum_last_post_subject FROM phpbb_forums WHERE forum_id = 2', 'forum_last_post_subject'));
 		self::assertArrayNotHasKey(1, $this->create_tag_manager()->get_tags());
 		self::assertArrayHasKey($a_id, $this->create_tag_manager()->get_tags());
 	}
@@ -108,6 +102,20 @@ class repairer_test extends tags_base
 		self::assertSame(1, $this->count_rows('phpbb_topic_prefixes_topics', 'topic_id = 10 AND prefix_id = 4'));
 		self::assertSame(1, $this->count_rows('phpbb_topic_prefixes_topics', 'topic_id = 11 AND prefix_id = 4'));
 		self::assertSame(2, $this->count_rows('phpbb_topic_prefixes_forums', 'prefix_id = 4'));
+	}
+
+	public function test_split_reuses_an_existing_same_name_tag_without_rejecting_duplicates(): void
+	{
+		$this->db->sql_query("UPDATE phpbb_topic_prefixes SET prefix_tag = 'Destination' WHERE prefix_id IN (2, 4)");
+		$repairer = $this->create_repairer();
+		$preview = $repairer->preview(1, ['Destination']);
+
+		self::assertCount(1, $preview['targets']);
+		self::assertTrue($preview['targets'][0]['existing']);
+		self::assertSame(2, $preview['targets'][0]['prefix_id']);
+		$result = $repairer->repair(1, ['Destination']);
+		self::assertSame($preview['targets'][0]['prefix_id'], $result['targets'][0]['prefix_id']);
+		self::assertSame(2, $this->count_rows('phpbb_topic_prefixes', "prefix_tag = 'Destination'"));
 	}
 
 	public function test_explicit_merge_uses_target_id_and_preserves_target_metadata(): void
@@ -194,10 +202,9 @@ class repairer_test extends tags_base
 		$result = $this->create_repairer()->repair(1, ['Defect']);
 		$target_id = (int) $result['targets'][0]['prefix_id'];
 		self::assertSame(501, $result['topic_count']);
-		self::assertSame(501, $result['cleanup']['topic_title']);
 		self::assertSame(501, $this->count_rows('phpbb_topic_prefixes_topics', 'prefix_id = ' . $target_id));
-		self::assertSame('Topic 0', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 1000', 'topic_title'));
-		self::assertSame('Topic 500', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 1500', 'topic_title'));
+		self::assertSame('Bug Topic 0', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 1000', 'topic_title'));
+		self::assertSame('Bug Topic 500', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 1500', 'topic_title'));
 	}
 
 	public function test_empty_source_name_never_strips_leading_spaces(): void
@@ -205,8 +212,7 @@ class repairer_test extends tags_base
 		$this->db->sql_query("UPDATE phpbb_topic_prefixes SET prefix_tag = '' WHERE prefix_id = 1");
 		$this->db->sql_query("UPDATE phpbb_topics SET topic_title = ' Leading space' WHERE topic_id = 10");
 
-		$result = $this->create_repairer()->repair(1, ['Repaired']);
-		self::assertSame(0, $result['cleanup']['topic_title']);
+		$this->create_repairer()->repair(1, ['Repaired']);
 		self::assertSame(' Leading space', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 10', 'topic_title'));
 	}
 
@@ -239,9 +245,7 @@ class repairer_test extends tags_base
 			'phpbb_topic_prefixes',
 			'phpbb_topic_prefixes_forums',
 			'phpbb_topic_prefixes_topics',
-			'phpbb_topics',
-			'phpbb_posts',
-			'phpbb_forums'
+			'phpbb_topics'
 		);
 	}
 

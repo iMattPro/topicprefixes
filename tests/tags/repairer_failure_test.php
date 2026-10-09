@@ -53,7 +53,6 @@ class repairer_failure_test extends \phpbb_test_case
 		$this->expectExceptionMessage('Topic assignment failed.');
 
 		$repairer->repair_topics(
-			['stored_name' => 'Combined'],
 			[2],
 			[['topic_id' => 10]]
 		);
@@ -63,7 +62,7 @@ class repairer_failure_test extends \phpbb_test_case
 	{
 		$repairer = $this->create_repairer();
 		$repairer->preview_result = [
-			'source' => ['prefix_id' => 1, 'prefix_tag' => 'Combined', 'stored_name' => 'Combined'],
+			'source' => ['prefix_id' => 1, 'prefix_tag' => 'Combined'],
 			'targets' => [['prefix_id' => 2, 'prefix_tag' => 'A', 'existing' => true]],
 		];
 		$repairer->created_targets = [['prefix_id' => 2, 'prefix_tag' => 'A', 'existing' => true]];
@@ -87,9 +86,7 @@ class repairer_failure_test extends \phpbb_test_case
 			'tags',
 			'forums_map',
 			'topic_map',
-			'topics',
-			'posts',
-			'forums'
+			'topics'
 		);
 	}
 }
@@ -110,9 +107,9 @@ class repairer_failure_harness extends \phpbb\topicprefixes\tags\repairer
 		return parent::create_or_update_targets($source, $targets);
 	}
 
-	public function repair_topics(array $source, array $target_ids, array $topics): array
+	public function repair_topics(array $target_ids, array $topics): int
 	{
-		return parent::repair_topic_batch($source, $target_ids, $topics);
+		return parent::repair_topic_batch($target_ids, $topics);
 	}
 
 	public function preview(int $source_id, array $replacements): array
@@ -150,23 +147,4 @@ class repairer_failure_harness extends \phpbb\topicprefixes\tags\repairer
 		return [];
 	}
 
-	protected function collect_text_changes(string $legacy_text, array $topics): array
-	{
-		return [
-			'topic_titles' => [],
-			'topic_last_post_subjects' => [],
-			'post_subjects' => [],
-			'forum_last_post_subjects' => [],
-			'counts' => [
-				'topic_title' => 0,
-				'post_subject' => 0,
-				'topic_last_post_subject' => 0,
-				'forum_last_post_subject' => 0,
-			],
-		];
-	}
-
-	protected function apply_text_changes(array $changes): void
-	{
-	}
 }

@@ -384,13 +384,7 @@ class repair_tags extends command
 		$effects = [
 			$this->language->lang($topics_key, $preview['topic_count']),
 			$this->language->lang($forums_key, $preview['forum_count']),
-			$this->language->lang(
-				'CLI_TOPIC_TAGS_REPAIR_PREVIEW_TEXT',
-				$this->language->lang('CLI_TOPIC_TAGS_REPAIR_PREVIEW_TEXT_TOPIC_TITLES', $preview['cleanup']['topic_title']),
-				$this->language->lang('CLI_TOPIC_TAGS_REPAIR_PREVIEW_TEXT_POST_SUBJECTS', $preview['cleanup']['post_subject']),
-				$this->language->lang('CLI_TOPIC_TAGS_REPAIR_PREVIEW_TEXT_LAST_POST_SUBJECTS', $preview['cleanup']['topic_last_post_subject']),
-				$this->language->lang('CLI_TOPIC_TAGS_REPAIR_PREVIEW_TEXT_FORUM_LAST_POST_SUBJECTS', $preview['cleanup']['forum_last_post_subject'])
-			),
+			$this->language->lang('CLI_TOPIC_TAGS_REPAIR_NO_TEXT_CHANGES'),
 			$this->language->lang('CLI_TOPIC_TAGS_REPAIR_PREVIEW_DELETE'),
 		];
 		if ($is_merge && !empty($preview['source']['prefix_enabled']) && empty($preview['targets'][0]['prefix_enabled']))

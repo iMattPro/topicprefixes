@@ -92,17 +92,11 @@ class repair_tags_test extends \phpbb_test_case
 		$preview = [
 			'source' => $tags[1],
 			'targets' => [
-				['prefix_id' => null, 'prefix_tag' => 'A', 'existing' => false],
-				['prefix_id' => 2, 'prefix_tag' => 'B', 'existing' => true],
+				['prefix_id' => null, 'prefix_tag' => 'A', 'prefix_enabled' => 1, 'existing' => false],
+				['prefix_id' => 2, 'prefix_tag' => 'B', 'prefix_enabled' => 0, 'existing' => true],
 			],
 			'forum_count' => 1,
 			'topic_count' => 2,
-			'cleanup' => [
-				'topic_title' => 1,
-				'post_subject' => 1,
-				'topic_last_post_subject' => 1,
-				'forum_last_post_subject' => 1,
-			],
 		];
 		$result = $preview;
 		$result['targets'][0]['prefix_id'] = 3;
@@ -131,7 +125,7 @@ class repair_tags_test extends \phpbb_test_case
 		self::assertStringContainsString('2 assigned topics, 1 forum', $display);
 		self::assertStringContainsString('Assign every separate tag to 2 topics', $display);
 		self::assertStringContainsString('across 1 forum', $display);
-		self::assertStringContainsString('1 topic title, 1 first-post subject, 1 last-post subject, and 1 forum last-post subject', $display);
+		self::assertStringContainsString('Titles and post subjects are not changed.', $display);
 		self::assertStringContainsString('across 2 topics.', $display);
 		self::assertStringContainsString('Finished: 1 split, 0 merges, 0 skips.', $display);
 	}
@@ -148,17 +142,11 @@ class repair_tags_test extends \phpbb_test_case
 		$preview = [
 			'source' => $source,
 			'targets' => [
-				['prefix_id' => null, 'prefix_tag' => 'A&B', 'existing' => false],
-				['prefix_id' => 2, 'prefix_tag' => '<Target>', 'existing' => true],
+				['prefix_id' => null, 'prefix_tag' => 'A&B', 'prefix_enabled' => 1, 'existing' => false],
+				['prefix_id' => 2, 'prefix_tag' => '<Target>', 'prefix_enabled' => 1, 'existing' => true],
 			],
 			'forum_count' => 1,
 			'topic_count' => 2,
-			'cleanup' => [
-				'topic_title' => 1,
-				'post_subject' => 1,
-				'topic_last_post_subject' => 1,
-				'forum_last_post_subject' => 1,
-			],
 		];
 		$result = $preview;
 		$result['targets'][0]['prefix_id'] = 3;
@@ -200,12 +188,6 @@ class repair_tags_test extends \phpbb_test_case
 			'targets' => [$target + ['existing' => true]],
 			'forum_count' => 1,
 			'topic_count' => 1,
-			'cleanup' => [
-				'topic_title' => 0,
-				'post_subject' => 0,
-				'topic_last_post_subject' => 0,
-				'forum_last_post_subject' => 0,
-			],
 		];
 
 		$this->tag_manager->expects(self::once())->method('get_tags')->willReturn([1 => $source, 2 => $target]);
@@ -444,17 +426,11 @@ class repair_tags_test extends \phpbb_test_case
 		return [
 			'source' => $source,
 			'targets' => [
-				['prefix_id' => null, 'prefix_tag' => 'A', 'existing' => false],
-				['prefix_id' => 2, 'prefix_tag' => 'B', 'existing' => true],
+				['prefix_id' => null, 'prefix_tag' => 'A', 'prefix_enabled' => $source['prefix_enabled'], 'existing' => false],
+				['prefix_id' => 2, 'prefix_tag' => 'B', 'prefix_enabled' => 0, 'existing' => true],
 			],
 			'forum_count' => 1,
 			'topic_count' => 2,
-			'cleanup' => [
-				'topic_title' => 0,
-				'post_subject' => 0,
-				'topic_last_post_subject' => 0,
-				'forum_last_post_subject' => 0,
-			],
 		];
 	}
 

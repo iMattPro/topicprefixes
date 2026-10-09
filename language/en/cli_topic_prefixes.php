@@ -19,11 +19,12 @@ if (empty($lang) || !is_array($lang))
 }
 
 $lang = array_merge($lang, [
+	'CLI_TOPIC_TAGS_REPAIR_NO_TEXT_CHANGES' => 'Titles and post subjects are not changed.',
 	'CLI_TOPIC_TAGS_REPAIR_DESCRIPTION' => 'Interactively split or merge topic tags.',
 	'CLI_TOPIC_TAGS_REPAIR_TAG_ID' => 'Repair only this source tag identifier.',
 	'CLI_TOPIC_TAGS_REPAIR_INTERACTIVE_REQUIRED' => 'This tag tool requires an interactive terminal.',
 	'CLI_TOPIC_TAGS_REPAIR_BOARD_ENABLED' => 'Disable the board under General, Board settings before repairing topic tags.',
-	'CLI_TOPIC_TAGS_REPAIR_WARNING' => 'This tool changes topic tags, topic assignments, and exact source tag text at the start of associated titles and subjects.',
+	'CLI_TOPIC_TAGS_REPAIR_WARNING' => 'This tool changes topic tags and topic assignments. Titles and post subjects are left unchanged.',
 	'CLI_TOPIC_TAGS_REPAIR_BACKUP_CONFIRM' => 'Do you have a current database backup?',
 	'CLI_TOPIC_TAGS_REPAIR_CANCELLED' => 'No changes made.',
 	'CLI_TOPIC_TAGS_REPAIR_TAG_NOT_FOUND' => 'Requested topic tag does not exist.',
@@ -80,23 +81,6 @@ $lang = array_merge($lang, [
 		2 => 'Add source tag availability to the destination tag across %d forums.',
 	],
 	'CLI_TOPIC_TAGS_REPAIR_MERGE_PREVIEW_ENABLE' => 'Enable the destination tag because the source tag is enabled.',
-	'CLI_TOPIC_TAGS_REPAIR_PREVIEW_TEXT' => 'Clean exact source tag text from %1$s, %2$s, %3$s, and %4$s.',
-	'CLI_TOPIC_TAGS_REPAIR_PREVIEW_TEXT_TOPIC_TITLES' => [
-		1 => '%d topic title',
-		2 => '%d topic titles',
-	],
-	'CLI_TOPIC_TAGS_REPAIR_PREVIEW_TEXT_POST_SUBJECTS' => [
-		1 => '%d first-post subject',
-		2 => '%d first-post subjects',
-	],
-	'CLI_TOPIC_TAGS_REPAIR_PREVIEW_TEXT_LAST_POST_SUBJECTS' => [
-		1 => '%d last-post subject',
-		2 => '%d last-post subjects',
-	],
-	'CLI_TOPIC_TAGS_REPAIR_PREVIEW_TEXT_FORUM_LAST_POST_SUBJECTS' => [
-		1 => '%d forum last-post subject',
-		2 => '%d forum last-post subjects',
-	],
 	'CLI_TOPIC_TAGS_REPAIR_PREVIEW_DELETE' => 'Delete source tag only after every transfer succeeds.',
 	'CLI_TOPIC_TAGS_REPAIR_SPLIT_APPLY_CONFIRM' => 'Apply this tag split?',
 	'CLI_TOPIC_TAGS_REPAIR_MERGE_APPLY_CONFIRM' => 'Apply this tag merge?',

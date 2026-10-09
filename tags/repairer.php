@@ -19,7 +19,6 @@ use phpbb\db\driver\driver_interface;
 class repairer
 {
 	protected const BATCH_SIZE = 500;
-	protected const UPDATE_CASE_BATCH_SIZE = 10;
 
 	/** @var driver_interface */
 	protected $db;
@@ -39,21 +38,13 @@ class repairer
 	/** @var string */
 	protected $topics_table;
 
-	/** @var string */
-	protected $posts_table;
-
-	/** @var string */
-	protected $forums_table;
-
 	public function __construct(
 		driver_interface $db,
 		cache $cache,
 		$tags_table,
 		$forums_map_table,
 		$topic_map_table,
-		$topics_table,
-		$posts_table,
-		$forums_table
+		$topics_table
 	)
 	{
 		$this->db = $db;
@@ -62,8 +53,6 @@ class repairer
 		$this->forums_map_table = $forums_map_table;
 		$this->topic_map_table = $topic_map_table;
 		$this->topics_table = $topics_table;
-		$this->posts_table = $posts_table;
-		$this->forums_table = $forums_table;
 	}
 
 	/**
@@ -118,14 +107,11 @@ class repairer
 	 */
 	protected function build_preview(array $source, array $targets): array
 	{
-		$scan = $this->scan_topics($source);
-
 		return [
 			'source' => $source,
 			'targets' => $targets,
 			'forum_count' => count($this->get_source_forums($source['prefix_id'])),
-			'topic_count' => $scan['topic_count'],
-			'cleanup' => $scan['cleanup'],
+			'topic_count' => $this->count_topics($source['prefix_id']),
 		];
 	}
 
@@ -134,7 +120,7 @@ class repairer
 	 *
 	 * Target definitions are committed before topic batches. The source remains
 	 * until every batch succeeds, so rerunning the same repair after interruption
-	 * safely reuses targets, skips existing relationships, and ignores clean text.
+	 * safely reuses targets, skips existing relationships, and leaves all text untouched.
 	 *
 	 * @param int $source_id Source tag identifier
 	 * @param array $replacements Display-form replacement names
@@ -163,10 +149,7 @@ class repairer
 		$source_id = (int) $source['prefix_id'];
 		$targets = $this->create_or_update_targets($source, $preview['targets']);
 		$target_ids = array_column($targets, 'prefix_id');
-		$totals = [
-			'topic_count' => 0,
-			'cleanup' => $this->empty_cleanup_counts(),
-		];
+		$topic_count = 0;
 
 		$last_topic_id = 0;
 		do
@@ -178,12 +161,7 @@ class repairer
 			}
 
 			$last_topic_id = (int) end($topics)['topic_id'];
-			$batch = $this->repair_topic_batch($source, $target_ids, $topics);
-			$totals['topic_count'] += $batch['topic_count'];
-			foreach ($batch['cleanup'] as $field => $count)
-			{
-				$totals['cleanup'][$field] += $count;
-			}
+			$topic_count += $this->repair_topic_batch($target_ids, $topics);
 		}
 		while (count($topics) === self::BATCH_SIZE);
 
@@ -206,8 +184,7 @@ class repairer
 		return [
 			'source' => $source,
 			'targets' => $targets,
-			'topic_count' => $totals['topic_count'],
-			'cleanup' => $totals['cleanup'],
+			'topic_count' => $topic_count,
 		];
 	}
 
@@ -240,7 +217,6 @@ class repairer
 		$tag['prefix_id'] = (int) $tag['prefix_id'];
 		$tag['prefix_enabled'] = (int) $tag['prefix_enabled'];
 		$tag['prefix_order'] = (int) $tag['prefix_order'];
-		$tag['stored_name'] = $tag['prefix_tag'];
 		$tag['prefix_tag'] = manager::decode_name($tag['prefix_tag']);
 
 		return $tag;
@@ -258,7 +234,9 @@ class repairer
 			throw new \InvalidArgumentException('CLI_TOPIC_TAGS_REPAIR_NEW_TAG_REQUIRED');
 		}
 
-		$result = $this->db->sql_query('SELECT prefix_id, prefix_tag, prefix_enabled FROM ' . $this->tags_table);
+		$result = $this->db->sql_query('SELECT prefix_id, prefix_tag, prefix_enabled
+			FROM ' . $this->tags_table . '
+			ORDER BY prefix_id ASC');
 		$known = [];
 		while ($row = $this->db->sql_fetchrow($result))
 		{
@@ -392,36 +370,31 @@ class repairer
 	}
 
 	/**
-	 * Inspect or apply title cleanup for every source assignment.
+	 * Count canonical topics assigned to the source tag.
+	 *
+	 * @param int $source_id Source tag identifier
+	 * @return int Number of topics eligible for transfer
 	 */
-	protected function scan_topics(array $source): array
+	protected function count_topics(int $source_id): int
 	{
-		$totals = ['topic_count' => 0, 'cleanup' => $this->empty_cleanup_counts()];
-		$last_topic_id = 0;
-		do
-		{
-			$topics = $this->get_topic_batch($source['prefix_id'], $last_topic_id);
-			if (!$topics)
-			{
-				break;
-			}
-			$last_topic_id = (int) end($topics)['topic_id'];
-			$changes = $this->collect_text_changes($source['stored_name'] . ' ', $topics);
-			$totals['topic_count'] += count($topics);
-			foreach ($changes['counts'] as $field => $count)
-			{
-				$totals['cleanup'][$field] += $count;
-			}
-		}
-		while (count($topics) === self::BATCH_SIZE);
+		$result = $this->db->sql_query('SELECT COUNT(*) AS total
+			FROM ' . $this->topic_map_table . ' pt
+			INNER JOIN ' . $this->topics_table . ' t ON t.topic_id = pt.topic_id
+			WHERE pt.prefix_id = ' . $source_id . ' AND t.topic_moved_id = 0');
+		$count = (int) $this->db->sql_fetchfield('total');
+		$this->db->sql_freeresult($result);
 
-		return $totals;
+		return $count;
 	}
 
 	/**
 	 * Repair one bounded topic batch.
+	 *
+	 * @param array $target_ids Destination tag identifiers
+	 * @param array $topics     Canonical topic rows
+	 * @return int Number of topics processed
 	 */
-	protected function repair_topic_batch(array $source, array $target_ids, array $topics): array
+	protected function repair_topic_batch(array $target_ids, array $topics): int
 	{
 		$topic_ids = array_map('intval', array_column($topics, 'topic_id'));
 		$existing = $this->get_existing_assignments($topic_ids, $target_ids);
@@ -436,8 +409,6 @@ class repairer
 				}
 			}
 		}
-		$changes = $this->collect_text_changes($source['stored_name'] . ' ', $topics);
-
 		$this->db->sql_transaction('begin');
 		try
 		{
@@ -445,7 +416,6 @@ class repairer
 			{
 				$this->db->sql_multi_insert($this->topic_map_table, $row_batch);
 			}
-			$this->apply_text_changes($changes);
 			$this->db->sql_transaction('commit');
 		}
 		catch (\Exception $e)
@@ -454,7 +424,7 @@ class repairer
 			throw $e;
 		}
 
-		return ['topic_count' => count($topics), 'cleanup' => $changes['counts']];
+		return count($topics);
 	}
 
 	/**
@@ -462,19 +432,11 @@ class repairer
 	 */
 	protected function get_topic_batch(int $source_id, int $last_topic_id): array
 	{
-		$sql = 'SELECT t.topic_id, t.topic_title, t.topic_first_post_id, t.topic_last_post_id,
-				t.topic_last_post_subject, fp.post_subject, f.forum_id AS last_post_forum_id,
-				f.forum_last_post_subject
+		$sql = 'SELECT t.topic_id
 			FROM ' . $this->topic_map_table . ' pt
-			INNER JOIN ' . $this->topics_table . ' t
-				ON t.topic_id = pt.topic_id
-			LEFT JOIN ' . $this->posts_table . ' fp
-				ON fp.post_id = t.topic_first_post_id
-			LEFT JOIN ' . $this->forums_table . ' f
-				ON t.topic_last_post_id <> 0
-					AND f.forum_last_post_id = t.topic_last_post_id
+			INNER JOIN ' . $this->topics_table . ' t ON t.topic_id = pt.topic_id
 			WHERE pt.prefix_id = ' . $source_id . '
-				AND t.topic_id > ' . $last_topic_id . '
+				AND t.topic_moved_id = 0 AND t.topic_id > ' . $last_topic_id . '
 			ORDER BY t.topic_id ASC';
 		$result = $this->db->sql_query_limit($sql, self::BATCH_SIZE);
 		$topics = [];
@@ -507,89 +469,6 @@ class repairer
 	}
 
 	/**
-	 * Collect exact leading-prefix removals from migration-owned subject fields.
-	 */
-	protected function collect_text_changes(string $legacy_text, array $topics): array
-	{
-		$changes = [
-			'topic_titles' => [],
-			'topic_last_post_subjects' => [],
-			'post_subjects' => [],
-			'forum_last_post_subjects' => [],
-			'counts' => $this->empty_cleanup_counts(),
-		];
-		if ($legacy_text === ' ')
-		{
-			return $changes;
-		}
-
-		$legacy_length = strlen($legacy_text);
-		foreach ($topics as $topic)
-		{
-			$topic_id = (int) $topic['topic_id'];
-			if (strpos($topic['topic_title'], $legacy_text) === 0)
-			{
-				$changes['topic_titles'][$topic_id] = substr($topic['topic_title'], $legacy_length);
-				$changes['counts']['topic_title']++;
-			}
-			if ($topic['topic_last_post_subject'] !== null && strpos($topic['topic_last_post_subject'], $legacy_text) === 0)
-			{
-				$changes['topic_last_post_subjects'][$topic_id] = substr($topic['topic_last_post_subject'], $legacy_length);
-				$changes['counts']['topic_last_post_subject']++;
-			}
-
-			$post_id = (int) $topic['topic_first_post_id'];
-			if ($post_id && $topic['post_subject'] !== null && strpos($topic['post_subject'], $legacy_text) === 0)
-			{
-				$changes['post_subjects'][$post_id] = substr($topic['post_subject'], $legacy_length);
-				$changes['counts']['post_subject']++;
-			}
-
-			$forum_id = (int) $topic['last_post_forum_id'];
-			if ($forum_id && $topic['forum_last_post_subject'] !== null && strpos($topic['forum_last_post_subject'], $legacy_text) === 0)
-			{
-				$changes['forum_last_post_subjects'][$forum_id] = substr($topic['forum_last_post_subject'], $legacy_length);
-				$changes['counts']['forum_last_post_subject']++;
-			}
-		}
-
-		return $changes;
-	}
-
-	/**
-	 * Write collected title changes.
-	 */
-	protected function apply_text_changes(array $changes): void
-	{
-		$this->bulk_update_text($this->topics_table, 'topic_id', 'topic_title', $changes['topic_titles']);
-		$this->bulk_update_text($this->topics_table, 'topic_id', 'topic_last_post_subject', $changes['topic_last_post_subjects']);
-		$this->bulk_update_text($this->posts_table, 'post_id', 'post_subject', $changes['post_subjects']);
-		$this->bulk_update_text($this->forums_table, 'forum_id', 'forum_last_post_subject', $changes['forum_last_post_subjects']);
-	}
-
-	/**
-	 * Update distinct text values with portable bounded CASE expressions.
-	 */
-	protected function bulk_update_text(string $table, string $id_column, string $value_column, array $changes): void
-	{
-		foreach (array_chunk($changes, self::UPDATE_CASE_BATCH_SIZE, true) as $batch)
-		{
-			$value_sql = $value_column;
-			foreach (array_reverse($batch, true) as $id => $value)
-			{
-				$value_sql = $this->db->sql_case(
-					$id_column . ' = ' . (int) $id,
-					$this->sql_text_literal($value),
-					$value_sql
-				);
-			}
-			$this->db->sql_query('UPDATE ' . $table . '
-				SET ' . $value_column . ' = ' . $value_sql . '
-				WHERE ' . $this->db->sql_in_set($id_column, array_keys($batch)));
-		}
-	}
-
-	/**
 	 * Get source forum availability identifiers.
 	 */
 	protected function get_source_forums(int $source_id): array
@@ -618,16 +497,6 @@ class repairer
 		$this->db->sql_freeresult($result);
 
 		return $count;
-	}
-
-	protected function empty_cleanup_counts(): array
-	{
-		return [
-			'topic_title' => 0,
-			'post_subject' => 0,
-			'topic_last_post_subject' => 0,
-			'forum_last_post_subject' => 0,
-		];
 	}
 
 	protected function sql_text_literal(string $value): string
