@@ -132,8 +132,8 @@ class legacy_migration_test extends tags_base
 	public function test_legacy_definitions_titles_subjects_and_idempotency()
 	{
 		$migration = $this->create_migration();
-		$migration->migrate_legacy_data();
-		$migration->migrate_legacy_data();
+		$this->run_migration($migration);
+		$this->run_migration($migration);
 
 		self::assertSame('4A76A8', $this->field('SELECT prefix_color FROM phpbb_topic_prefixes WHERE prefix_id = 1', 'prefix_color'));
 		self::assertSame(1, (int) $this->field('SELECT prefix_order FROM phpbb_topic_prefixes WHERE prefix_id = 1', 'prefix_order'));
@@ -150,7 +150,7 @@ class legacy_migration_test extends tags_base
 		self::assertSame('[Random] No tags', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 13', 'topic_title'));
 		self::assertSame('バグ 返信 subject', $this->field('SELECT post_subject FROM phpbb_posts WHERE post_id = ' . $this->post_ids['reply'], 'post_subject'));
 		self::assertSame('移動 topic', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = ' . $this->moved_topic_id, 'topic_title'));
-		self::assertSame('移動 topic', $this->field('SELECT post_subject FROM phpbb_posts WHERE post_id = ' . $this->post_ids['moved'], 'post_subject'));
+		self::assertSame('バグ 移動 topic', $this->field('SELECT post_subject FROM phpbb_posts WHERE post_id = ' . $this->post_ids['moved'], 'post_subject'));
 		self::assertSame('移動 topic', $this->field('SELECT topic_last_post_subject FROM phpbb_topics WHERE topic_id = ' . $this->moved_topic_id, 'topic_last_post_subject'));
 		self::assertSame(0, (int) $this->field('SELECT COUNT(*) AS total FROM phpbb_topic_prefixes_topics WHERE topic_id = ' . $this->moved_topic_id, 'total'));
 		self::assertSame(1, (int) $this->field('SELECT COUNT(*) AS total FROM phpbb_topic_prefixes_forums WHERE forum_id = 2 AND prefix_id = 4', 'total'));
@@ -158,6 +158,26 @@ class legacy_migration_test extends tags_base
 		$result = $this->db->sql_query('SELECT COUNT(*) AS total FROM phpbb_topic_prefixes_topics WHERE topic_id = 10 AND prefix_id = 1');
 		self::assertSame(1, (int) $this->db->sql_fetchfield('total'));
 		$this->db->sql_freeresult($result);
+	}
+
+	public function test_empty_cleanup_preserves_original_title_and_subject(): void
+	{
+		$title = 'バグ ';
+		$subject = 'バグ   ';
+		$pdo = $this->getConnection()->getConnection();
+		$statement = $pdo->prepare('UPDATE phpbb_topics SET topic_title = ?, topic_last_post_subject = ? WHERE topic_id = 10');
+		$statement->execute([$title, $subject]);
+		$statement = $pdo->prepare('UPDATE phpbb_posts SET post_subject = ? WHERE post_id = ?');
+		$statement->execute([$subject, $this->post_ids['both']]);
+		$statement = $pdo->prepare('UPDATE phpbb_forums SET forum_last_post_subject = ? WHERE forum_id = 2');
+		$statement->execute([$subject]);
+
+		$this->run_migration();
+
+		self::assertSame($title, $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 10', 'topic_title'));
+		self::assertSame($subject, $this->field('SELECT post_subject FROM phpbb_posts WHERE post_id = ' . $this->post_ids['both'], 'post_subject'));
+		self::assertSame($subject, $this->field('SELECT topic_last_post_subject FROM phpbb_topics WHERE topic_id = 10', 'topic_last_post_subject'));
+		self::assertSame($subject, $this->field('SELECT forum_last_post_subject FROM phpbb_forums WHERE forum_id = 2', 'forum_last_post_subject'));
 	}
 
 	public function test_shared_last_post_cleans_each_forum_and_queues_assignment_once()
@@ -169,7 +189,7 @@ class legacy_migration_test extends tags_base
 			WHERE forum_id = 3');
 		$statement->execute(array($this->post_ids['reply'], 'バグ 返信 subject'));
 
-		$this->create_migration()->migrate_legacy_data();
+		$this->run_migration();
 
 		self::assertSame(1, (int) $this->field('SELECT COUNT(*) AS total
 			FROM phpbb_topic_prefixes_topics
@@ -180,6 +200,35 @@ class legacy_migration_test extends tags_base
 			FROM phpbb_forums WHERE forum_id = 3', 'forum_last_post_subject'));
 	}
 
+	/**
+	 * @dataProvider shadow_prefix_provider
+	 */
+	public function test_shadow_uses_its_own_prefix_without_editing_posts(int $prefix_id, string $title, string $expected): void
+	{
+		$statement = $this->getConnection()->getConnection()->prepare('UPDATE phpbb_topics
+			SET topic_prefix_id = ?, topic_title = ?, topic_last_post_subject = ?, topic_first_post_id = ?
+			WHERE topic_id = ?');
+		$statement->execute([$prefix_id, $title, $title, $this->post_ids['reply'], $this->moved_topic_id]);
+
+		$this->run_migration();
+		$this->run_migration();
+
+		self::assertSame($expected, $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = ' . $this->moved_topic_id, 'topic_title'));
+		self::assertSame($expected, $this->field('SELECT topic_last_post_subject FROM phpbb_topics WHERE topic_id = ' . $this->moved_topic_id, 'topic_last_post_subject'));
+		self::assertSame('バグ 移動 topic', $this->field('SELECT post_subject FROM phpbb_posts WHERE post_id = ' . $this->post_ids['moved'], 'post_subject'));
+		self::assertSame('バグ 返信 subject', $this->field('SELECT post_subject FROM phpbb_posts WHERE post_id = ' . $this->post_ids['reply'], 'post_subject'));
+		self::assertSame(0, (int) $this->field('SELECT COUNT(*) AS total FROM phpbb_topic_prefixes_topics WHERE topic_id = ' . $this->moved_topic_id, 'total'));
+	}
+
+	public function shadow_prefix_provider(): array
+	{
+		return [
+			'own prefix differs from destination' => [2, 'PHP 8.4 Shadow', 'Shadow'],
+			'no prefix ID' => [0, 'バグ Shadow', 'バグ Shadow'],
+			'unknown prefix' => [999, 'Unknown Shadow', 'Unknown Shadow'],
+		];
+	}
+
 	public function test_split_prefix_does_not_reuse_standalone_tag_with_different_state()
 	{
 		$this->reset_legacy_data([
@@ -187,7 +236,7 @@ class legacy_migration_test extends tags_base
 			['[3.3][DEV]', 1, 3],
 		], true);
 
-		$this->create_migration()->migrate_legacy_data();
+		$this->run_migration();
 
 		self::assertSame(['[DEV]', '[3.3]', '[DEV]'], $this->tag_names());
 		self::assertSame(1, (int) $this->field("SELECT MIN(prefix_id) AS prefix_id
@@ -214,7 +263,7 @@ class legacy_migration_test extends tags_base
 			['[CDB]', 0, 3],
 		], true);
 
-		$this->create_migration()->migrate_legacy_data();
+		$this->run_migration();
 
 		self::assertSame(['[CDB]', '[CDB]'], $this->tag_names());
 		self::assertSame(1, (int) $this->field('SELECT prefix_enabled FROM phpbb_topic_prefixes WHERE prefix_id = 1', 'prefix_enabled'));
@@ -237,8 +286,8 @@ class legacy_migration_test extends tags_base
 		], true);
 
 		$migration = $this->create_migration();
-		$migration->migrate_legacy_data();
-		$migration->migrate_legacy_data();
+		$this->run_migration($migration);
+		$this->run_migration($migration);
 
 		self::assertSame(['[CDB]'], $this->tag_names());
 		self::assertSame(1, (int) $this->field("SELECT prefix_id FROM phpbb_topic_prefixes WHERE prefix_tag = '[CDB]'", 'prefix_id'));
@@ -261,7 +310,7 @@ class legacy_migration_test extends tags_base
 			['[CDB]', 1, 2],
 		], true);
 
-		$this->create_migration()->migrate_legacy_data();
+		$this->run_migration();
 
 		self::assertSame(['[CDB]'], $this->tag_names());
 		self::assertSame(1, (int) $this->field('SELECT COUNT(*) AS total FROM phpbb_topic_prefixes_forums', 'total'));
@@ -298,7 +347,7 @@ class legacy_migration_test extends tags_base
 		}
 		$this->insert_explicit_rows('phpbb_topics', $topics);
 
-		$this->create_migration()->migrate_legacy_data();
+		$this->run_migration();
 
 		self::assertSame(0, (int) $this->field('SELECT COUNT(*) AS total
 			FROM phpbb_topic_prefixes_topics
@@ -316,23 +365,27 @@ class legacy_migration_test extends tags_base
 			['[A][B]', 1, 999],
 		]);
 
-		$this->create_migration()->migrate_legacy_data();
+		$this->run_migration();
 
 		self::assertSame(['[CDB]', '[A]', '[B]'], $this->tag_names());
 		self::assertSame(0, (int) $this->field('SELECT COUNT(*) AS total FROM phpbb_topic_prefixes_forums', 'total'));
 	}
 
-	public function test_shared_forum_last_post_is_cleaned_across_topic_batch_boundary()
+	public function test_shared_forum_last_post_is_cleaned_at_topic_batch_boundary()
 	{
 		$this->reset_legacy_data([['[A]', 1, 2]]);
 		$topics = [];
+		$posts = [];
 		for ($offset = 0; $offset < 500; $offset++)
 		{
+			$post_id = $offset === 499 ? 9000 : 2000 + $offset;
+			$posts[] = ['post_id' => $post_id, 'topic_id' => 1000 + $offset, 'forum_id' => 2, 'post_subject' => $offset === 499 ? '[A] Boundary subject' : '[A] Topic ' . $offset, 'post_text' => ''];
 			$topics[] = [
 				'topic_id' => 1000 + $offset,
 				'forum_id' => 2,
 				'topic_title' => '[A] Topic ' . $offset,
 				'topic_prefix_id' => 1,
+				'topic_first_post_id' => $post_id,
 				'topic_last_post_id' => $offset === 499 ? 9000 : 0,
 				'topic_last_post_subject' => $offset === 499 ? '[A] Boundary subject' : '',
 				'topic_visibility' => ITEM_APPROVED,
@@ -340,12 +393,13 @@ class legacy_migration_test extends tags_base
 			];
 		}
 		$this->insert_explicit_rows('phpbb_topics', $topics);
+		$this->insert_explicit_rows('phpbb_posts', $posts);
 		$statement = $this->getConnection()->getConnection()->prepare('UPDATE phpbb_forums
 			SET forum_last_post_id = ?, forum_last_post_subject = ?
 			WHERE forum_id IN (2, 3)');
 		$statement->execute(array(9000, '[A] Boundary subject'));
 
-		$this->create_migration()->migrate_legacy_data();
+		$this->run_migration();
 
 		self::assertSame(500, (int) $this->field('SELECT COUNT(*) AS total FROM phpbb_topic_prefixes_topics', 'total'));
 		self::assertSame('Boundary subject', $this->field('SELECT forum_last_post_subject
@@ -367,8 +421,8 @@ class legacy_migration_test extends tags_base
 		], true);
 
 		$migration = $this->create_migration();
-		$migration->migrate_legacy_data();
-		$migration->migrate_legacy_data();
+		$this->run_migration($migration);
+		$this->run_migration($migration);
 
 		$expected = ['[CDB]', '[3.3]', '[RC]'];
 		$actual = $this->tag_names();
@@ -413,8 +467,8 @@ class legacy_migration_test extends tags_base
 		$this->reset_legacy_data($definitions, true);
 
 		$migration = $this->create_migration();
-		$migration->migrate_legacy_data();
-		$migration->migrate_legacy_data();
+		$this->run_migration($migration);
+		$this->run_migration($migration);
 
 		self::assertSame(['[3.3]', '[DEV]', '[3.3]', '[ALPHA]', '[BETA]', '[RC]', '[CDB]', '[4.0]', '[DEV]'], $this->tag_names());
 		self::assertSame(['[3.3]', '[DEV]'], $this->topic_tag_names(100));
@@ -451,7 +505,7 @@ class legacy_migration_test extends tags_base
 			['[日本語][😇]', 1, 2],
 		]);
 
-		$this->create_migration()->migrate_legacy_data();
+		$this->run_migration();
 
 		$expected = [
 			'[CDB]',
@@ -485,7 +539,7 @@ class legacy_migration_test extends tags_base
 		{
 			$topic_id = 1000 + $offset;
 			$post_id = 2000 + $offset;
-			$subject = '[A][B] Topic ' . $offset;
+			$subject = ($offset === 0 ? '[A][B] ' : '') . '[A][B] Topic ' . $offset;
 			$topics[] = [
 				'topic_id' => $topic_id,
 				'forum_id' => 2,
@@ -505,11 +559,23 @@ class legacy_migration_test extends tags_base
 		}
 		$this->insert_explicit_rows('phpbb_topics', $topics);
 		$this->insert_explicit_rows('phpbb_posts', $posts);
+		$this->db->sql_query("UPDATE phpbb_topics SET topic_last_post_id = 2000,
+			topic_last_post_subject = '[A][B] [A][B] Topic 0' WHERE topic_id = 1000");
+		$this->db->sql_query("UPDATE phpbb_forums SET forum_last_post_id = 2000,
+			forum_last_post_subject = '[A][B] [A][B] Topic 0' WHERE forum_id IN (2, 3)");
 
-		$this->create_migration()->migrate_legacy_data();
+		$migration = $this->create_migration();
+		self::assertSame(['last_topic_id' => 1499], $migration->migrate_legacy_data());
+		self::assertSame(500, (int) $this->field('SELECT COUNT(*) AS total FROM phpbb_topics WHERE topic_prefix_id = 0', 'total'));
+		// Retry without the saved cursor, as if interrupted after committing a batch.
+		$this->run_migration($migration);
 
 		self::assertSame(1002, (int) $this->field('SELECT COUNT(*) AS total FROM phpbb_topic_prefixes_topics', 'total'));
-		self::assertSame('Topic 0', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 1000', 'topic_title'));
+		self::assertSame('[A][B] Topic 0', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 1000', 'topic_title'));
+		self::assertSame('[A][B] Topic 0', $this->field('SELECT post_subject FROM phpbb_posts WHERE post_id = 2000', 'post_subject'));
+		self::assertSame('[A][B] Topic 0', $this->field('SELECT topic_last_post_subject FROM phpbb_topics WHERE topic_id = 1000', 'topic_last_post_subject'));
+		self::assertSame('[A][B] Topic 0', $this->field('SELECT forum_last_post_subject FROM phpbb_forums WHERE forum_id = 2', 'forum_last_post_subject'));
+		self::assertSame('[A][B] Topic 0', $this->field('SELECT forum_last_post_subject FROM phpbb_forums WHERE forum_id = 3', 'forum_last_post_subject'));
 		self::assertSame('Topic 500', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 1500', 'topic_title'));
 		self::assertSame(0, (int) $this->field("SELECT COUNT(*) AS total FROM phpbb_topic_prefixes WHERE prefix_tag = '[A][B]'", 'total'));
 	}
@@ -522,18 +588,40 @@ class legacy_migration_test extends tags_base
 		], true);
 
 		$migration = $this->create_migration();
-		$migration->migrate_legacy_data();
+		$this->run_migration($migration);
 		self::assertSame('Topic 1', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 100', 'topic_title'));
 		self::assertSame('Topic 1', $this->field('SELECT post_subject FROM phpbb_posts WHERE post_id = 1000', 'post_subject'));
 		self::assertSame(['[R&D]', '[X]', 'Literal &amp;'], $this->tag_names());
 		self::assertSame('[R&amp;D]', $this->field("SELECT prefix_tag FROM phpbb_topic_prefixes WHERE prefix_tag = '[R&amp;D]'", 'prefix_tag'));
 	}
 
-	protected function create_migration()
+	public function test_direct_migration_needs_no_disabled_board_or_search_backend(): void
+	{
+		$migration = $this->create_migration(new \phpbb\config\config([
+			'board_disable' => 0,
+			'search_type' => '\\missing\\search_backend',
+		]));
+		$this->run_migration($migration);
+
+		self::assertSame('日本語 title', $this->field('SELECT topic_title FROM phpbb_topics WHERE topic_id = 10', 'topic_title'));
+		self::assertSame('日本語 title', $this->field('SELECT post_subject FROM phpbb_posts WHERE post_id = ' . $this->post_ids['both'], 'post_subject'));
+	}
+
+	protected function run_migration($migration = null): void
+	{
+		$migration = $migration ?: $this->create_migration();
+		$state = null;
+		do
+		{
+			$state = $migration->migrate_legacy_data($state);
+		} while ($state !== true);
+	}
+
+	protected function create_migration($config = null)
 	{
 		global $phpbb_root_path, $phpEx;
 		return new \phpbb\topicprefixes\migrations\v200_data(
-			new \phpbb\config\config(array()),
+			$config ?: new \phpbb\config\config(array()),
 			$this->db,
 			$this->tools,
 			$phpbb_root_path,
