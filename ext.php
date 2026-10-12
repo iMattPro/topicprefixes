@@ -25,7 +25,7 @@ class ext extends \phpbb\extension\base
 	 * The current phpBB version should meet or exceed
 	 * the minimum version required by this extension:
 	 *
-	 * Requires phpBB 3.3.5 and PHP 7.2
+	 * Requires phpBB 3.3.19 and PHP 7.2
 	 *
 	 * @return bool|string
 	 */
@@ -55,7 +55,7 @@ class ext extends \phpbb\extension\base
 	 */
 	protected function meets_requirements(): bool
 	{
-		return PHP_VERSION_ID >= 70200 && phpbb_version_compare(PHPBB_VERSION, '3.3.5', '>=');
+		return PHP_VERSION_ID >= 70200 && phpbb_version_compare(PHPBB_VERSION, '3.3.19', '>=');
 	}
 
 	/**
