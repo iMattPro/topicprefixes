@@ -29,6 +29,23 @@ class title_repairer_test extends tags_base
 		return new title_repairer($this->db, $this->cache, 'phpbb_topics', 'phpbb_posts', 'phpbb_forums', 'phpbb_config');
 	}
 
+	/**
+	 * Create a title repair service forced through nontransactional preflight.
+	 *
+	 * @return title_repairer Title repair service using the fixture database
+	 */
+	protected function nontransactional_repairer(): title_repairer
+	{
+		return new nontransactional_title_repairer(
+			$this->db,
+			$this->cache,
+			'phpbb_topics',
+			'phpbb_posts',
+			'phpbb_forums',
+			'phpbb_config'
+		);
+	}
+
 	public function test_literal_matching_preserves_stored_suffix(): void
 	{
 		foreach ([
@@ -123,14 +140,64 @@ class title_repairer_test extends tags_base
 	public function test_changed_snapshot_is_skipped_without_subject_changes(): void
 	{
 		$this->prepare_topic();
-		$repairer = $this->repairer();
+		$repairer = $this->nontransactional_repairer();
 		$plan = iterator_to_array($repairer->preview(2, '[OLD]'))[0];
 		$sql = "UPDATE phpbb_posts
 			SET post_subject = 'Edited'
 			WHERE post_id = 100";
 		$this->db->sql_query($sql);
-		self::assertSame(1, $repairer->apply($plan)['conflicts']);
+		self::assertSame([
+			'topics' => 0,
+			'subjects' => 0,
+			'caches' => 0,
+			'skipped' => 0,
+			'conflicts' => 1,
+		], $repairer->apply($plan));
 		self::assertSame('[OLD][PHP] Topic', $this->field('phpbb_topics', 'topic_title', 'topic_id = 10'));
+		self::assertSame('Edited', $this->field('phpbb_posts', 'post_subject', 'post_id = 100'));
+	}
+
+	public function test_mixed_batch_applies_valid_snapshot_without_touching_stale_snapshot(): void
+	{
+		$this->prepare_topic();
+		$this->insert_explicit_rows('phpbb_topics', [
+			['topic_id' => 14, 'forum_id' => 2, 'topic_title' => '[OLD] Valid'],
+		]);
+		$repairer = $this->nontransactional_repairer();
+		$plans = iterator_to_array($repairer->preview(2, '[OLD]'));
+		self::assertCount(2, $plans);
+		$this->db->sql_query("UPDATE phpbb_posts SET post_subject = 'Edited' WHERE post_id = 100");
+
+		self::assertSame([
+			'topics' => 1,
+			'subjects' => 0,
+			'caches' => 0,
+			'skipped' => 0,
+			'conflicts' => 1,
+		], $repairer->apply_batch($plans));
+		self::assertSame('[OLD][PHP] Topic', $this->field('phpbb_topics', 'topic_title', 'topic_id = 10'));
+		self::assertSame('Edited', $this->field('phpbb_posts', 'post_subject', 'post_id = 100'));
+		self::assertSame('Valid', $this->field('phpbb_topics', 'topic_title', 'topic_id = 14'));
+	}
+
+	public function test_nontransactional_preflight_batches_one_hundred_rows(): void
+	{
+		$this->prepare_topic();
+		$rows = [];
+		for ($id = 2000; $id < 2100; $id++)
+		{
+			$rows[] = ['topic_id' => $id, 'forum_id' => 2, 'topic_title' => '[BULK] Topic ' . $id];
+		}
+		$this->insert_explicit_rows('phpbb_topics', $rows);
+		$repairer = $this->nontransactional_repairer();
+		$plans = iterator_to_array($repairer->preview(2, '[BULK]'));
+		self::assertCount(100, $plans);
+		$before_queries = $this->db->sql_num_queries();
+
+		$result = $repairer->apply_batch($plans);
+
+		self::assertSame(100, $result['topics']);
+		self::assertLessThanOrEqual(13, $this->db->sql_num_queries() - $before_queries);
 	}
 
 	public function test_single_post_topic_updates_owned_last_subject_caches(): void
@@ -255,5 +322,22 @@ class title_repairer_test extends tags_base
 		$value = $this->db->sql_fetchfield('value', false, $result);
 		$this->db->sql_freeresult($result);
 		return $value;
+	}
+}
+
+/**
+ * Force database tests through nontransactional snapshot preflight.
+ */
+class nontransactional_title_repairer extends title_repairer
+{
+	/**
+	 * Force preflight independently of the fixture table engine.
+	 *
+	 * @param array $plans Confirmed repair snapshots
+	 * @return bool Always true
+	 */
+	protected function requires_snapshot_preflight(array $plans): bool
+	{
+		return true;
 	}
 }

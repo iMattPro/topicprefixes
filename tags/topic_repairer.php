@@ -277,6 +277,27 @@ class topic_repairer extends title_repairer
 	}
 
 	/**
+	 * List text and relationship tables that one recovery batch may write.
+	 *
+	 * @param array $plans Confirmed recovery snapshots
+	 * @return array Unique table names
+	 */
+	protected function get_write_tables(array $plans): array
+	{
+		$tables = parent::get_write_tables($plans);
+		foreach ($plans as $plan)
+		{
+			if (($plan['reason'] ?? '') === 'eligible')
+			{
+				$tables[] = $this->topic_map;
+				break;
+			}
+		}
+
+		return array_values(array_unique($tables));
+	}
+
+	/**
 	 * Validate and insert tag assignments for one recovery batch.
 	 *
 	 * @param array $plans  Confirmed recovery snapshots

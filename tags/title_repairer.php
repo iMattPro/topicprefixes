@@ -38,6 +38,9 @@ class title_repairer
 	/** @var string Configuration table */
 	protected $config_table;
 
+	/** @var array MySQL storage engines cached by table name */
+	protected $table_engines = [];
+
 	/**
 	 * Constructor.
 	 *
@@ -406,9 +409,10 @@ class title_repairer
 	}
 
 	/**
-	 * Apply one confirmed snapshot using guarded transactional updates.
+	 * Apply one confirmed snapshot using engine-appropriate guarded updates.
 	 *
-	 * Conflicting snapshots or guarded updates are rolled back and counted.
+	 * Nontransactional MySQL tables are preflighted before writes. Transactional
+	 * databases rely on rollback, while guarded updates still detect races.
 	 * Previously committed repair units are retained if a later unit fails.
 	 *
 	 * @param array $plan Confirmed repair snapshot
@@ -424,6 +428,7 @@ class title_repairer
 	/**
 	 * Apply one bounded batch of confirmed repair snapshots.
 	 *
+	 * Known stale snapshots on nontransactional tables are removed in bulk.
 	 * Conflicting batches fall back to one transaction per snapshot so valid
 	 * repairs can still be committed.
 	 *
@@ -436,34 +441,45 @@ class title_repairer
 	public function apply_batch(array $plans, bool $invalidate = true): array
 	{
 		$this->assert_board_disabled();
-		try
+		$counts = $this->empty_counts();
+		if ($plans && $this->requires_snapshot_preflight($plans))
 		{
-			$counts = $this->apply_transaction($plans);
+			[$plans, $conflicts] = $this->partition_current_plans($plans);
+			$counts['conflicts'] = $conflicts;
 		}
-		catch (\Throwable $e)
+
+		if ($plans)
 		{
-			if ($e->getMessage() !== 'CLI_TOPIC_REPAIR_CONFLICT')
+			try
 			{
-				throw $e;
+				$result = $this->apply_transaction($plans);
 			}
-			$counts = $this->empty_counts();
-			foreach ($plans as $plan)
+			catch (\Throwable $e)
 			{
-				try
+				if ($e->getMessage() !== 'CLI_TOPIC_REPAIR_CONFLICT')
 				{
-					$result = $this->apply_transaction([$plan]);
+					throw $e;
 				}
-				catch (\RuntimeException $conflict)
+				$result = $this->empty_counts();
+				foreach ($plans as $plan)
 				{
-					if ($conflict->getMessage() !== 'CLI_TOPIC_REPAIR_CONFLICT')
+					try
 					{
-						throw $conflict;
+						$plan_result = $this->apply_transaction([$plan]);
 					}
-					$result = $this->empty_counts();
-					$result['conflicts'] = 1;
+					catch (\RuntimeException $conflict)
+					{
+						if ($conflict->getMessage() !== 'CLI_TOPIC_REPAIR_CONFLICT')
+						{
+							throw $conflict;
+						}
+						$plan_result = $this->empty_counts();
+						$plan_result['conflicts'] = 1;
+					}
+					$this->merge_counts($result, $plan_result);
 				}
-				$this->merge_counts($counts, $result);
 			}
+			$this->merge_counts($counts, $result);
 		}
 		if ($invalidate)
 		{
@@ -522,6 +538,196 @@ class title_repairer
 	}
 
 	/**
+	 * List tables that one repair batch may write.
+	 *
+	 * Subclasses may add tables used for relational changes.
+	 *
+	 * @param array $plans Confirmed repair snapshots
+	 * @return array Unique table names
+	 */
+	protected function get_write_tables(array $plans): array
+	{
+		$tables = [];
+		foreach ($plans as $plan)
+		{
+			foreach ($plan['changes'] as $change)
+			{
+				$tables[$change['table']] = $change['table'];
+			}
+		}
+
+		return array_values($tables);
+	}
+
+	/**
+	 * Check whether one MySQL batch touches a non-InnoDB or unknown table.
+	 *
+	 * Engine metadata is cached for the lifetime of this repair service.
+	 * Other supported databases use their normal transactional flow.
+	 *
+	 * @param array $plans Confirmed repair snapshots
+	 * @return bool Whether snapshots require a read-only preflight
+	 */
+	protected function requires_snapshot_preflight(array $plans): bool
+	{
+		if ($this->db->get_sql_layer() !== 'mysqli')
+		{
+			return false;
+		}
+
+		$tables = $this->get_write_tables($plans);
+		$unknown = [];
+		foreach ($tables as $table)
+		{
+			if (!array_key_exists($table, $this->table_engines))
+			{
+				$unknown[] = $table;
+			}
+		}
+		if ($unknown)
+		{
+			$result = $this->db->sql_query('SHOW TABLE STATUS
+				WHERE ' . $this->db->sql_in_set('Name', $unknown));
+			while ($row = $this->db->sql_fetchrow($result))
+			{
+				$this->table_engines[$row['Name']] = $row['Engine'] ?? null;
+			}
+			$this->db->sql_freeresult($result);
+			foreach ($unknown as $table)
+			{
+				if (!array_key_exists($table, $this->table_engines))
+				{
+					$this->table_engines[$table] = null;
+				}
+			}
+		}
+
+		foreach ($tables as $table)
+		{
+			if ($this->table_engines[$table] !== 'InnoDB')
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Group field changes into unique rows with identical changed columns.
+	 *
+	 * @param array $changes Field changes from confirmed repair snapshots
+	 * @return array Row groups keyed by table, identifier and changed columns
+	 */
+	protected function group_changes(array $changes): array
+	{
+		$rows = [];
+		foreach ($changes as $change)
+		{
+			$id = $change['table'] . ':' . $change['key'] . ':' . $change['row'][$change['key']];
+			$rows[$id]['table'] = $change['table'];
+			$rows[$id]['key'] = $change['key'];
+			$rows[$id]['row'] = $change['row'];
+			$rows[$id]['values'][$change['field']] = $change['after'];
+		}
+
+		$groups = [];
+		foreach ($rows as $row)
+		{
+			$fields = array_keys($row['values']);
+			sort($fields);
+			$group_key = $row['table'] . ':' . $row['key'] . ':' . implode(',', $fields);
+			$groups[$group_key][] = $row;
+		}
+
+		return $groups;
+	}
+
+	/**
+	 * Build a guard requiring every stored snapshot value to remain unchanged.
+	 *
+	 * @param array $item Grouped row change
+	 * @return string SQL guard expression
+	 */
+	protected function change_guard(array $item): string
+	{
+		$where = [];
+		foreach ($item['row'] as $column => $value)
+		{
+			$where[] = $value === null
+				? $column . ' IS NULL'
+				: $column . ' = ' . $this->literal((string) $value);
+		}
+
+		return implode(' AND ', $where);
+	}
+
+	/**
+	 * Partition current and stale plans before a nontransactional batch writes.
+	 *
+	 * Snapshot rows are checked in table-level groups of up to 100. Guarded
+	 * updates remain necessary for changes racing with this preflight.
+	 *
+	 * @param array $plans Confirmed repair snapshots
+	 * @return array Current plans followed by stale plan count
+	 */
+	protected function partition_current_plans(array $plans): array
+	{
+		$rows = [];
+		$plan_rows = [];
+		foreach ($plans as $plan_index => $plan)
+		{
+			foreach ($plan['changes'] as $change)
+			{
+				$id = $change['table'] . ':' . $change['key'] . ':' . $change['row'][$change['key']];
+				$rows[$change['table'] . ':' . $change['key']][$id] = [
+					'table' => $change['table'],
+					'key' => $change['key'],
+					'row' => $change['row'],
+					'id' => $id,
+				];
+				$plan_rows[$plan_index][$id] = true;
+			}
+		}
+
+		$matched = [];
+		foreach ($rows as $group)
+		{
+			foreach (array_chunk(array_values($group), self::BATCH_SIZE) as $batch)
+			{
+				$guards = [];
+				foreach ($batch as $item)
+				{
+					$guards[] = '(' . $this->change_guard($item) . ')';
+				}
+				$result = $this->db->sql_query('SELECT ' . $batch[0]['key'] . '
+					FROM ' . $batch[0]['table'] . '
+					WHERE ' . implode(' OR ', $guards));
+				while ($row = $this->db->sql_fetchrow($result))
+				{
+					$id = $batch[0]['table'] . ':' . $batch[0]['key'] . ':' . $row[$batch[0]['key']];
+					$matched[$id] = true;
+				}
+				$this->db->sql_freeresult($result);
+			}
+		}
+
+		$current = [];
+		$conflicts = 0;
+		foreach ($plans as $plan_index => $plan)
+		{
+			if (array_diff_key($plan_rows[$plan_index] ?? [], $matched))
+			{
+				$conflicts++;
+				continue;
+			}
+			$current[] = $plan;
+		}
+
+		return [$current, $conflicts];
+	}
+
+	/**
 	 * Apply guarded text changes in portable ten-row conditional updates.
 	 *
 	 * @param array $changes Field changes from confirmed repair snapshots
@@ -531,24 +737,7 @@ class title_repairer
 	 */
 	protected function apply_changes(array $changes, array &$counts): void
 	{
-		$rows = [];
-		foreach ($changes as $change)
-		{
-			$id = $change['table'] . ':' . $change['row'][$change['key']];
-			$rows[$id]['table'] = $change['table'];
-			$rows[$id]['key'] = $change['key'];
-			$rows[$id]['row'] = $change['row'];
-			$rows[$id]['values'][$change['field']] = $change['after'];
-		}
-		$groups = [];
-		foreach ($rows as $row)
-		{
-			$fields = array_keys($row['values']);
-			sort($fields);
-			$group_key = $row['table'] . ':' . $row['key'] . ':' . implode(',', $fields);
-			$groups[$group_key][] = $row;
-		}
-		foreach ($groups as $group)
+		foreach ($this->group_changes($changes) as $group)
 		{
 			foreach (array_chunk($group, 10) as $batch)
 			{
@@ -556,12 +745,7 @@ class title_repairer
 				$guards = [];
 				foreach ($batch as $item)
 				{
-					$where = [];
-					foreach ($item['row'] as $column => $value)
-					{
-						$where[] = $column . ' = ' . $this->literal((string) $value);
-					}
-					$guards[] = '(' . implode(' AND ', $where) . ')';
+					$guards[] = '(' . $this->change_guard($item) . ')';
 				}
 				$fields = array_keys($batch[0]['values']);
 				sort($fields);
@@ -570,13 +754,8 @@ class title_repairer
 					$value_sql = $field;
 					foreach (array_reverse($batch) as $item)
 					{
-						$where = [];
-						foreach ($item['row'] as $column => $value)
-						{
-							$where[] = $column . ' = ' . $this->literal((string) $value);
-						}
 						$value_sql = $this->db->sql_case(
-							implode(' AND ', $where),
+							$this->change_guard($item),
 							$this->literal($item['values'][$field]),
 							$value_sql
 						);

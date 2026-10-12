@@ -40,6 +40,26 @@ class topic_repairer_test extends tags_base
 	}
 
 	/**
+	 * Create a recovery service forced through nontransactional preflight.
+	 *
+	 * @return topic_repairer Recovery service using the fixture database
+	 */
+	protected function nontransactional_repairer(): topic_repairer
+	{
+		return new nontransactional_topic_repairer(
+			$this->db,
+			$this->cache,
+			'phpbb_topics',
+			'phpbb_posts',
+			'phpbb_forums',
+			'phpbb_config',
+			'phpbb_topic_prefixes',
+			'phpbb_topic_prefixes_topics',
+			'phpbb_topic_prefixes_forums'
+		);
+	}
+
+	/**
 	 * Enable maintenance mode in the fixture database.
 	 *
 	 * @return void
@@ -124,6 +144,36 @@ class topic_repairer_test extends tags_base
 		self::assertSame([], iterator_to_array($repairer->preview_recovery()));
 	}
 
+	public function test_stale_text_does_not_add_tags_or_clean_title(): void
+	{
+		$this->enable_maintenance();
+		$this->db->sql_query("UPDATE phpbb_topics
+			SET topic_title = 'Bug Topic', topic_first_post_id = 9200
+			WHERE topic_id = 13");
+		$this->insert_explicit_rows('phpbb_posts', [
+			['post_id' => 9200, 'topic_id' => 13, 'forum_id' => 2, 'post_subject' => 'Bug First', 'post_text' => ''],
+		]);
+		$repairer = $this->nontransactional_repairer();
+		$plan = iterator_to_array($repairer->preview_recovery())[0];
+		$this->db->sql_query("UPDATE phpbb_posts SET post_subject = 'Edited' WHERE post_id = 9200");
+
+		self::assertSame([
+			'assignments' => 0,
+			'topics' => 0,
+			'subjects' => 0,
+			'caches' => 0,
+			'skipped' => 0,
+			'conflicts' => 1,
+		], $repairer->apply($plan));
+		self::assertSame('Bug Topic', $this->field('phpbb_topics', 'topic_title', 'topic_id = 13'));
+		self::assertSame('Edited', $this->field('phpbb_posts', 'post_subject', 'post_id = 9200'));
+		self::assertSame(0, (int) $this->field(
+			'phpbb_topic_prefixes_topics',
+			'COUNT(*)',
+			'topic_id = 13'
+		));
+	}
+
 	/**
 	 * Fetch one scalar field from the fixture database.
 	 *
@@ -139,5 +189,22 @@ class topic_repairer_test extends tags_base
 		$this->db->sql_freeresult($result);
 
 		return $value;
+	}
+}
+
+/**
+ * Force recovery tests through nontransactional snapshot preflight.
+ */
+class nontransactional_topic_repairer extends topic_repairer
+{
+	/**
+	 * Force preflight independently of the fixture table engine.
+	 *
+	 * @param array $plans Confirmed recovery snapshots
+	 * @return bool Always true
+	 */
+	protected function requires_snapshot_preflight(array $plans): bool
+	{
+		return true;
 	}
 }
