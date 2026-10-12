@@ -28,21 +28,31 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  */
 class repair_tags extends command
 {
-	/** @var config */
+	/** @var config Configuration service */
 	protected $config;
 
-	/** @var language */
+	/** @var language Language service */
 	protected $language;
 
-	/** @var manager */
+	/** @var manager Topic tag manager */
 	protected $tag_manager;
 
-	/** @var repairer */
+	/** @var repairer Topic tag repair service */
 	protected $repairer;
 
-	/** @var log_interface */
+	/** @var log_interface Administrator audit logger */
 	protected $log;
 
+	/**
+	 * Constructor.
+	 *
+	 * @param user          $user        phpBB user
+	 * @param config        $config      Configuration service
+	 * @param language      $language    Language service
+	 * @param manager       $tag_manager Topic tag manager
+	 * @param repairer      $repairer    Topic tag repair service
+	 * @param log_interface $log         Administrator audit logger
+	 */
 	public function __construct(user $user, config $config, language $language, manager $tag_manager, repairer $repairer, log_interface $log)
 	{
 		$this->config = $config;
@@ -263,6 +273,10 @@ class repair_tags extends command
 
 	/**
 	 * Collect normalized replacement names one at a time.
+	 *
+	 * @param SymfonyStyle $io          Console input/output helper
+	 * @param string       $source_name Display-form source tag name
+	 * @return array Display-form replacement names
 	 */
 	protected function ask_replacements(SymfonyStyle $io, string $source_name): array
 	{
@@ -311,6 +325,11 @@ class repair_tags extends command
 
 	/**
 	 * Select one existing destination tag by identifier.
+	 *
+	 * @param SymfonyStyle $io        Console input/output helper
+	 * @param int          $source_id Source tag identifier
+	 * @param array        $catalog   Tag catalog
+	 * @return int|null Selected target identifier, or null when cancelled
 	 */
 	protected function ask_merge_target(SymfonyStyle $io, int $source_id, array $catalog): ?int
 	{
@@ -352,6 +371,11 @@ class repair_tags extends command
 
 	/**
 	 * Display all effects known before mutation.
+	 *
+	 * @param SymfonyStyle $io       Console input/output helper
+	 * @param array        $preview  Validated repair preview
+	 * @param bool         $is_merge Whether preview describes a merge
+	 * @return void
 	 */
 	protected function display_preview(SymfonyStyle $io, array $preview, bool $is_merge): void
 	{

@@ -19,13 +19,13 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
  */
 class lifecycle_listener implements EventSubscriberInterface
 {
-	/** @var assignment_manager */
+	/** @var assignment_manager Topic/tag assignment manager */
 	protected $assignments;
 
-	/** @var manager */
+	/** @var manager Topic tag manager */
 	protected $manager;
 
-	/** @var string */
+	/** @var string Topic/tag map table */
 	protected $topic_map_table;
 
 	/** @var array Tag IDs captured immediately before topic deletion */
@@ -41,7 +41,7 @@ class lifecycle_listener implements EventSubscriberInterface
 	 * @param manager            $manager        Tag manager
 	 * @param string             $topic_map_table Topic/tag map table
 	 */
-	public function __construct(assignment_manager $assignments, manager $manager, $topic_map_table)
+	public function __construct(assignment_manager $assignments, manager $manager, string $topic_map_table)
 	{
 		$this->assignments = $assignments;
 		$this->manager = $manager;

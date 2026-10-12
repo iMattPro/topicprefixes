@@ -37,7 +37,7 @@ class renderer
 	 * @param string  $root_path phpBB root path
 	 * @param string  $php_ext   PHP extension
 	 */
-	public function __construct(manager $manager, $root_path, $php_ext)
+	public function __construct(manager $manager, string $root_path, string $php_ext)
 	{
 		$this->manager = $manager;
 		$this->root_path = $root_path;

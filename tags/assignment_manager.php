@@ -17,7 +17,7 @@ use phpbb\db\driver\driver_interface;
  */
 class assignment_manager
 {
-	/** @var driver_interface */
+	/** @var driver_interface Database connection */
 	protected $db;
 
 	/** @var string Topic/tag map table */
@@ -49,7 +49,7 @@ class assignment_manager
 	 * @param string           $tags_table      Tag definition table
 	 * @param string           $topics_table    Topics table
 	 */
-	public function __construct(driver_interface $db, $topic_map_table, $tags_table, $topics_table)
+	public function __construct(driver_interface $db, string $topic_map_table, string $tags_table, string $topics_table)
 	{
 		$this->db = $db;
 		$this->topic_map_table = $topic_map_table;
@@ -68,7 +68,6 @@ class assignment_manager
 	 */
 	public function set_topic_tags(int $topic_id, array $tag_ids): bool
 	{
-		$topic_id = (int) $topic_id;
 		$tag_ids = $this->normalize_ids($tag_ids);
 		if (!$topic_id || !$this->topic_exists($topic_id) || !$this->tags_exist($tag_ids))
 		{
@@ -90,7 +89,6 @@ class assignment_manager
 	 */
 	public function set_validated_topic_tags(int $topic_id, array $tag_ids): bool
 	{
-		$topic_id = (int) $topic_id;
 		if (!$topic_id)
 		{
 			return false;

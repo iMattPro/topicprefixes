@@ -11,21 +11,26 @@
 namespace phpbb\topicprefixes\acp;
 
 /**
- * Class topic_prefixes_module
+ * Dispatch Topic Prefixes ACP requests to the administrator controller.
  */
 class topic_prefixes_module
 {
-	/** @var string */
+	/** @var string Module action URL */
 	public $u_action;
+
+	/** @var string Template name */
 	public $tpl_name;
+
+	/** @var string Page title language key */
 	public $page_title;
 
 	/**
-	 * Main ACP module
+	 * Dispatch the current ACP request.
 	 *
-	 * @throws \Exception
+	 * @return void
+	 * @throws \Exception When controller dispatch fails
 	 */
-	public function main()
+	public function main(): void
 	{
 		global $phpbb_container;
 

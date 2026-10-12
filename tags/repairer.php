@@ -20,31 +20,41 @@ class repairer
 {
 	protected const BATCH_SIZE = 500;
 
-	/** @var driver_interface */
+	/** @var driver_interface Database connection */
 	protected $db;
 
-	/** @var cache|null */
+	/** @var cache Cache driver */
 	protected $cache;
 
-	/** @var string */
+	/** @var string Tag definition table */
 	protected $tags_table;
 
-	/** @var string */
+	/** @var string Forum/tag map table */
 	protected $forums_map_table;
 
-	/** @var string */
+	/** @var string Topic/tag map table */
 	protected $topic_map_table;
 
-	/** @var string */
+	/** @var string Topics table */
 	protected $topics_table;
 
+	/**
+	 * Constructor.
+	 *
+	 * @param driver_interface $db               Database connection
+	 * @param cache            $cache            Cache driver
+	 * @param string           $tags_table       Tag definition table
+	 * @param string           $forums_map_table Forum/tag map table
+	 * @param string           $topic_map_table  Topic/tag map table
+	 * @param string           $topics_table     Topics table
+	 */
 	public function __construct(
 		driver_interface $db,
 		cache $cache,
-		$tags_table,
-		$forums_map_table,
-		$topic_map_table,
-		$topics_table
+		string $tags_table,
+		string $forums_map_table,
+		string $topic_map_table,
+		string $topics_table
 	)
 	{
 		$this->db = $db;
@@ -59,7 +69,8 @@ class repairer
 	 * Describe one source tag without changing data.
 	 *
 	 * @param int $source_id Source tag identifier
-	 * @return array
+	 * @return array Source definition and relationship counts
+	 * @throws \InvalidArgumentException When the source tag does not exist
 	 */
 	public function inspect(int $source_id): array
 	{
@@ -77,7 +88,8 @@ class repairer
 	 *
 	 * @param int   $source_id   Source tag identifier
 	 * @param array $replacements Display-form replacement names
-	 * @return array
+	 * @return array Validated repair preview
+	 * @throws \InvalidArgumentException When the source or replacement data is invalid
 	 */
 	public function preview(int $source_id, array $replacements): array
 	{
@@ -88,6 +100,11 @@ class repairer
 
 	/**
 	 * Preview merging one source tag into one existing target.
+	 *
+	 * @param int $source_id Source tag identifier
+	 * @param int $target_id Target tag identifier
+	 * @return array Validated merge preview
+	 * @throws \InvalidArgumentException When either tag is missing or the source is the target
 	 */
 	public function preview_merge(int $source_id, int $target_id): array
 	{
@@ -104,6 +121,10 @@ class repairer
 
 	/**
 	 * Build a preview for resolved target definitions.
+	 *
+	 * @param array $source  Source tag definition
+	 * @param array $targets Resolved target definitions
+	 * @return array Repair preview and relationship counts
 	 */
 	protected function build_preview(array $source, array $targets): array
 	{
@@ -125,7 +146,7 @@ class repairer
 	 * @param int $source_id Source tag identifier
 	 * @param array $replacements Display-form replacement names
 	 * @return array Applied change counts and targets
-	 * @throws \Exception
+	 * @throws \Exception When validation or a database transaction fails
 	 */
 	public function repair(int $source_id, array $replacements): array
 	{
@@ -134,6 +155,12 @@ class repairer
 
 	/**
 	 * Merge one source tag into one existing target.
+	 *
+	 * @param int $source_id Source tag identifier
+	 * @param int $target_id Target tag identifier
+	 * @return array Applied change counts and targets
+	 * @throws \InvalidArgumentException When either tag is missing or the source is the target
+	 * @throws \Exception When a database transaction fails
 	 */
 	public function merge(int $source_id, int $target_id): array
 	{
@@ -142,6 +169,10 @@ class repairer
 
 	/**
 	 * Apply one validated preview.
+	 *
+	 * @param array $preview Validated repair preview
+	 * @return array Applied change counts and targets
+	 * @throws \Exception When a database transaction fails
 	 */
 	protected function apply_preview(array $preview): array
 	{
@@ -191,6 +222,8 @@ class repairer
 	/**
 	 * Load and normalize one source definition.
 	 *
+	 * @param int $source_id Source tag identifier
+	 * @return array Normalized source definition
 	 * @throws \InvalidArgumentException When source does not exist
 	 */
 	protected function get_source(int $source_id): array
@@ -200,6 +233,11 @@ class repairer
 
 	/**
 	 * Load and normalize one tag definition.
+	 *
+	 * @param int    $tag_id      Tag identifier
+	 * @param string $missing_key Language key used when the tag is missing
+	 * @return array Normalized tag definition
+	 * @throws \InvalidArgumentException When the tag does not exist
 	 */
 	protected function get_tag(int $tag_id, string $missing_key): array
 	{
@@ -225,6 +263,9 @@ class repairer
 	/**
 	 * Resolve replacement names against current definitions.
 	 *
+	 * @param array $source       Source tag definition
+	 * @param array $replacements Display-form replacement names
+	 * @return array Resolved target definitions
 	 * @throws \InvalidArgumentException For invalid or unsafe names
 	 */
 	protected function resolve_targets(array $source, array $replacements): array
@@ -287,6 +328,11 @@ class repairer
 
 	/**
 	 * Create missing targets and merge source metadata into existing targets.
+	 *
+	 * @param array $source  Source tag definition
+	 * @param array $targets Resolved target definitions
+	 * @return array Created or updated target definitions
+	 * @throws \Exception When a database transaction fails
 	 */
 	protected function create_or_update_targets(array $source, array $targets): array
 	{
@@ -336,6 +382,10 @@ class repairer
 
 	/**
 	 * Add missing source forums to one target.
+	 *
+	 * @param int   $target_id     Target tag identifier
+	 * @param array $source_forums Source forum identifiers
+	 * @return void
 	 */
 	protected function merge_forums(int $target_id, array $source_forums): void
 	{
@@ -393,6 +443,7 @@ class repairer
 	 * @param array $target_ids Destination tag identifiers
 	 * @param array $topics     Canonical topic rows
 	 * @return int Number of topics processed
+	 * @throws \Exception When the database transaction fails
 	 */
 	protected function repair_topic_batch(array $target_ids, array $topics): int
 	{
@@ -429,6 +480,10 @@ class repairer
 
 	/**
 	 * Load one bounded topic set assigned to source.
+	 *
+	 * @param int $source_id    Source tag identifier
+	 * @param int $last_topic_id Previous batch cursor
+	 * @return array Canonical topic rows
 	 */
 	protected function get_topic_batch(int $source_id, int $last_topic_id): array
 	{
@@ -451,6 +506,10 @@ class repairer
 
 	/**
 	 * Find target relationships already present in one topic batch.
+	 *
+	 * @param array $topic_ids Topic identifiers
+	 * @param array $target_ids Target tag identifiers
+	 * @return array Existing assignments grouped by topic and tag
 	 */
 	protected function get_existing_assignments(array $topic_ids, array $target_ids): array
 	{
@@ -470,6 +529,9 @@ class repairer
 
 	/**
 	 * Get source forum availability identifiers.
+	 *
+	 * @param int $source_id Source tag identifier
+	 * @return array Forum identifiers
 	 */
 	protected function get_source_forums(int $source_id): array
 	{
@@ -488,6 +550,10 @@ class repairer
 
 	/**
 	 * Count source relationships without loading topic content.
+	 *
+	 * @param string $table     Relationship table
+	 * @param int    $source_id Source tag identifier
+	 * @return int Relationship count
 	 */
 	protected function count_relationships(string $table, int $source_id): int
 	{
@@ -499,12 +565,23 @@ class repairer
 		return $count;
 	}
 
+	/**
+	 * Quote text for portable Unicode SQL literals.
+	 *
+	 * @param string $value Unquoted value
+	 * @return string Quoted SQL literal
+	 */
 	protected function sql_text_literal(string $value): string
 	{
 		$unicode_prefix = strpos($this->db->get_sql_layer(), 'mssql') === 0 ? 'N' : '';
 		return $unicode_prefix . "'" . $this->db->sql_escape($value) . "'";
 	}
 
+	/**
+	 * Invalidate persistent tag metadata.
+	 *
+	 * @return void
+	 */
 	protected function invalidate_cache(): void
 	{
 		if ($this->cache)

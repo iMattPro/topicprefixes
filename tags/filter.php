@@ -19,11 +19,11 @@ use phpbb\db\driver\driver_interface;
  */
 class filter
 {
-	/** @var driver_interface */
+	/** @var driver_interface Database connection */
 	protected $db;
-	/** @var content_visibility */
+	/** @var content_visibility Content visibility service */
 	protected $visibility;
-	/** @var auth */
+	/** @var auth Authorization service */
 	protected $auth;
 
 	/** @var string Topic/tag map table */
@@ -41,7 +41,7 @@ class filter
 	 * @param string             $topic_map_table Topic/tag map table
 	 * @param string             $topics_table    Topics table
 	 */
-	public function __construct(driver_interface $db, content_visibility $visibility, auth $auth, $topic_map_table, $topics_table)
+	public function __construct(driver_interface $db, content_visibility $visibility, auth $auth, string $topic_map_table, string $topics_table)
 	{
 		$this->db = $db;
 		$this->visibility = $visibility;

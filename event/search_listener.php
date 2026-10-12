@@ -24,45 +24,56 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
  */
 class search_listener implements EventSubscriberInterface
 {
-	/** @var manager */
+	/** @var manager Topic tag manager */
 	protected $manager;
 
-	/** @var assignment_manager */
+	/** @var assignment_manager Topic/tag assignment manager */
 	protected $assignments;
 
-	/** @var filter */
+	/** @var filter Topic tag SQL filter */
 	protected $filter;
 
-	/** @var renderer */
+	/** @var renderer Topic tag renderer */
 	protected $renderer;
 
-	/** @var request */
+	/** @var request Request object */
 	protected $request;
 
-	/** @var template */
+	/** @var template Template object */
 	protected $template;
 
-	/** @var language */
+	/** @var language Language object */
 	protected $language;
 
-	/** @var array */
+	/** @var array|null Selected tag identifiers */
 	protected $selected_ids;
 
-	/** @var array */
+	/** @var array Tags grouped by topic identifier */
 	protected $search_tags = [];
 
-	/** @var bool */
+	/** @var bool Whether current search supports topic tag filtering */
 	protected $filterable = false;
 
-	/** @var string */
+	/** @var string Unfiltered search URL */
 	protected $filter_url = '';
 
-	/** @var bool */
+	/** @var bool Whether extension language has been loaded */
 	protected $language_loaded = false;
 
-	/** @var string */
+	/** @var string Current predefined search identifier */
 	protected $predefined_search = '';
 
+	/**
+	 * Constructor.
+	 *
+	 * @param manager            $manager     Topic tag manager
+	 * @param assignment_manager $assignments Topic/tag assignment manager
+	 * @param filter             $filter      Topic tag SQL filter
+	 * @param renderer           $renderer    Topic tag renderer
+	 * @param request            $request     Request object
+	 * @param template           $template    Template object
+	 * @param language           $language    Language object
+	 */
 	public function __construct(manager $manager, assignment_manager $assignments, filter $filter, renderer $renderer, request $request, template $template, language $language)
 	{
 		$this->manager = $manager;
@@ -96,6 +107,9 @@ class search_listener implements EventSubscriberInterface
 
 	/**
 	 * Filter SQL-backed predefined searches before result IDs are collected.
+	 *
+	 * @param \phpbb\event\data $event Event data
+	 * @return void
 	 */
 	public function filter_predefined_search($event): void
 	{
@@ -129,6 +143,9 @@ class search_listener implements EventSubscriberInterface
 
 	/**
 	 * Filter unread-topic IDs inside phpBB's read-tracking query.
+	 *
+	 * @param \phpbb\event\data $event Event data
+	 * @return void
 	 */
 	public function filter_unread_topics($event): void
 	{
@@ -157,6 +174,9 @@ class search_listener implements EventSubscriberInterface
 	 *
 	 * The modified visibility expression participates in both result counting
 	 * and ID selection. A separate cache-key component prevents collisions.
+	 *
+	 * @param \phpbb\event\data $event Event data
+	 * @return void
 	 */
 	public function filter_backend($event): void
 	{
@@ -181,6 +201,9 @@ class search_listener implements EventSubscriberInterface
 
 	/**
 	 * Preserve selected tags in search sorting and pagination URLs.
+	 *
+	 * @param \phpbb\event\data $event Event data
+	 * @return void
 	 */
 	public function preserve_filter_url($event): void
 	{
@@ -195,6 +218,9 @@ class search_listener implements EventSubscriberInterface
 
 	/**
 	 * Batch-load tags only for rows phpBB already authorized and selected.
+	 *
+	 * @param \phpbb\event\data $event Event data
+	 * @return void
 	 */
 	public function load_search_tags($event): void
 	{
@@ -226,6 +252,9 @@ class search_listener implements EventSubscriberInterface
 
 	/**
 	 * Add plain or filterable tag badges to one search result row.
+	 *
+	 * @param \phpbb\event\data $event Event data
+	 * @return void
 	 */
 	public function add_search_tags($event): void
 	{
@@ -241,6 +270,8 @@ class search_listener implements EventSubscriberInterface
 
 	/**
 	 * Parse and validate selected tags once without loading topic assignments.
+	 *
+	 * @return array Selected tag identifiers
 	 */
 	protected function get_selected_ids(): array
 	{
@@ -262,6 +293,11 @@ class search_listener implements EventSubscriberInterface
 		return $this->selected_ids;
 	}
 
+	/**
+	 * Load tooltip language once for search results.
+	 *
+	 * @return void
+	 */
 	protected function load_language(): void
 	{
 		if (!$this->language_loaded)
@@ -273,6 +309,10 @@ class search_listener implements EventSubscriberInterface
 
 	/**
 	 * Append a WHERE condition without disturbing predefined search sorting.
+	 *
+	 * @param string $sql       Existing SQL condition and ordering
+	 * @param string $condition Topic tag condition
+	 * @return string Combined SQL fragment
 	 */
 	protected function add_condition_before_order_by(string $sql, string $condition): string
 	{

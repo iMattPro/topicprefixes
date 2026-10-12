@@ -66,9 +66,9 @@ class v200_data extends \phpbb\db\migration\migration
 	 * Topic rows are processed in bounded transactions. Committed topics clear
 	 * their legacy IDs, so retries never strip legitimate title text twice.
 	 *
-	 * @param array|null $state Last committed topic cursor from phpBB migrator
+	 * @param array|int|null $state Last committed topic cursor, or initial migrator state
 	 * @return array|bool Continuation state, or true when complete
-	 * @throws \Throwable
+	 * @throws \Throwable When a database transaction fails
 	 */
 	public function migrate_legacy_data($state = null)
 	{
@@ -84,7 +84,7 @@ class v200_data extends \phpbb\db\migration\migration
 		$valid_forum_ids = $this->get_valid_forum_ids($tables['forums']);
 		$this->migrate_tag_definitions($tables['topic_prefixes']);
 		$this->migrate_forum_availability($tables['topic_prefixes'], $tables['topic_prefixes_forums'], $valid_forum_ids);
-		list($tag_map, $replaced_source_ids) = $this->prepare_legacy_tags($tables, $valid_forum_ids);
+		[$tag_map, $replaced_source_ids] = $this->prepare_legacy_tags($tables, $valid_forum_ids);
 
 		$last_topic_id = (int) ($state['last_topic_id'] ?? 0);
 		$topics = $tag_map ? $this->get_legacy_topics($tables, $last_topic_id, array_keys($tag_map)) : [];
@@ -285,7 +285,7 @@ class v200_data extends \phpbb\db\migration\migration
 		foreach ($matches as $match)
 		{
 			$normalized = tag_manager::normalize_name($match[0]);
-			if (trim($match[1]) === '' || $normalized === '')
+			if ($normalized === '' || trim($match[1]) === '')
 			{
 				return [];
 			}
@@ -396,7 +396,7 @@ class v200_data extends \phpbb\db\migration\migration
 	 * @param array $topics  Legacy topic rows
 	 * @param array $tag_map Legacy-to-relational tag map
 	 * @return void
-	 * @throws \Throwable
+	 * @throws \Throwable When the database transaction fails
 	 */
 	protected function migrate_topic_batch(array $tables, array $topics, array $tag_map): void
 	{

@@ -28,19 +28,19 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  */
 class repair_topics extends command
 {
-	/** @var language */
+	/** @var language Language service */
 	protected $language;
 
-	/** @var topic_repairer */
+	/** @var topic_repairer Missing topic tag repair service */
 	protected $topic_repairer;
 
-	/** @var title_repairer */
+	/** @var title_repairer Topic title repair service */
 	protected $title_repairer;
 
-	/** @var reply_repairer */
+	/** @var reply_repairer Reply subject repair service */
 	protected $reply_repairer;
 
-	/** @var log_interface */
+	/** @var log_interface Administrator audit logger */
 	protected $log;
 
 	/**
@@ -679,6 +679,7 @@ class repair_topics extends command
 	 *
 	 * @param string $prefix Display-form literal prefix
 	 * @return string Escaped quoted prefix
+	 * @throws \RuntimeException When the prefix cannot be encoded
 	 */
 	protected function format_prefix_label(string $prefix): string
 	{

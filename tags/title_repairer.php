@@ -20,10 +20,10 @@ class title_repairer
 {
 	protected const BATCH_SIZE = 100;
 
-	/** @var driver_interface */
+	/** @var driver_interface Database connection */
 	protected $db;
 
-	/** @var cache */
+	/** @var cache Cache driver */
 	protected $cache;
 
 	/** @var string Topics table */

@@ -26,7 +26,7 @@ class manager
 	public const MAX_NAME_LENGTH = 50;
 	public const MAX_NAME_STORAGE_LENGTH = 255;
 
-	/** @var driver_interface */
+	/** @var driver_interface Database connection */
 	protected $db;
 
 	/** @var string Tag definition table */
@@ -41,7 +41,7 @@ class manager
 	/** @var string Forums table */
 	protected $forums_table;
 
-	/** @var cache|null */
+	/** @var cache|null Cache driver */
 	protected $cache;
 
 	/** @var array|null Request-local tag catalog */
@@ -57,7 +57,7 @@ class manager
 	 * @param string $forums_table Forums table
 	 * @param cache|null $cache Cache driver
 	 */
-	public function __construct(driver_interface $db, $tags_table, $forums_map_table, $topic_map_table, $forums_table, cache $cache = null)
+	public function __construct(driver_interface $db, string $tags_table, string $forums_map_table, string $topic_map_table, string $forums_table, ?cache $cache = null)
 	{
 		$this->db = $db;
 		$this->tags_table = $tags_table;
@@ -558,6 +558,9 @@ class manager
 
 	/**
 	 * Quote text for portable Unicode SQL literals.
+	 *
+	 * @param string $value Unquoted value
+	 * @return string Quoted SQL literal
 	 */
 	protected function sql_text_literal(string $value): string
 	{

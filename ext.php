@@ -50,6 +50,8 @@ class ext extends \phpbb\extension\base
 
 	/**
 	 * Check runtime requirements separately so unsupported environments can be tested.
+	 *
+	 * @return bool Whether PHP and phpBB satisfy minimum versions
 	 */
 	protected function meets_requirements(): bool
 	{
