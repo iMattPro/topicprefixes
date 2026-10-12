@@ -193,7 +193,7 @@ class manager
 			VALUES (' . $this->sql_text_literal($name) . ', ' . $this->sql_text_literal($color) . ', ' .
 			(int) (bool) $enabled . ', ' . ($max_order + 1) . ')';
 		$this->db->sql_query($sql);
-		$tag_id = (int) $this->db->sql_nextid();
+		$tag_id = (int) $this->db->sql_last_inserted_id();
 		$this->replace_forums($tag_id, $forum_ids);
 		$this->db->sql_transaction('commit');
 		$this->invalidate_catalog();

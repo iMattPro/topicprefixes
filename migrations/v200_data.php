@@ -215,7 +215,7 @@ class v200_data extends \phpbb\db\migration\migration
 							VALUES (' . $this->sql_text_literal($name) . ", '" . self::DEFAULT_COLOR . "', " .
 							(int) !empty($source['prefix_enabled']) . ', ' . (int) $source['prefix_order'] . ", 0, 0, 0, '', 0)";
 						$this->db->sql_query($sql);
-						$target_id = (int) $this->db->sql_nextid();
+						$target_id = (int) $this->db->sql_last_inserted_id();
 						$known_tags[$key] = ['prefix_id' => $target_id];
 					}
 

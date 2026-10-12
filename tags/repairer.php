@@ -360,7 +360,7 @@ class repairer
 						$this->sql_text_literal($source['prefix_color']) . ', ' .
 						(int) $source['prefix_enabled'] . ', ' . (int) $source['prefix_order'] . ')';
 					$this->db->sql_query($sql);
-					$target['prefix_id'] = (int) $this->db->sql_nextid();
+					$target['prefix_id'] = (int) $this->db->sql_last_inserted_id();
 					$target['prefix_enabled'] = $source['prefix_enabled'];
 				}
 
