@@ -2,6 +2,53 @@ imports:
     - { resource: tables.yml }
 
 services:
+    phpbb.topicprefixes.tags.reply_repairer:
+        class: phpbb\topicprefixes\tags\reply_repairer
+        arguments:
+            - '@dbal.conn'
+            - '@cache.driver'
+            - '%tables.topics%'
+            - '%tables.posts%'
+            - '%tables.forums%'
+            - '%tables.config%'
+            - '%phpbb.topicprefixes.tables.topic_prefixes%'
+            - '%phpbb.topicprefixes.tables.topic_prefixes_topics%'
+
+    phpbb.topicprefixes.tags.topic_repairer:
+        class: phpbb\topicprefixes\tags\topic_repairer
+        arguments:
+            - '@dbal.conn'
+            - '@cache.driver'
+            - '%tables.topics%'
+            - '%tables.posts%'
+            - '%tables.forums%'
+            - '%tables.config%'
+            - '%phpbb.topicprefixes.tables.topic_prefixes%'
+            - '%phpbb.topicprefixes.tables.topic_prefixes_topics%'
+            - '%phpbb.topicprefixes.tables.topic_prefixes_forums%'
+
+    phpbb.topicprefixes.tags.title_repairer:
+        class: phpbb\topicprefixes\tags\title_repairer
+        arguments:
+            - '@dbal.conn'
+            - '@cache.driver'
+            - '%tables.topics%'
+            - '%tables.posts%'
+            - '%tables.forums%'
+            - '%tables.config%'
+
+    phpbb.topicprefixes.console.command.repair_topics:
+        class: phpbb\topicprefixes\console\command\repair_topics
+        arguments:
+            - '@user'
+            - '@language'
+            - '@phpbb.topicprefixes.tags.topic_repairer'
+            - '@phpbb.topicprefixes.tags.title_repairer'
+            - '@phpbb.topicprefixes.tags.reply_repairer'
+            - '@log'
+        tags:
+            - { name: console.command }
+
     phpbb.topicprefixes.posting_listener:
         class: phpbb\topicprefixes\event\posting_listener
         arguments:

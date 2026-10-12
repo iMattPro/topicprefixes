@@ -19,6 +19,9 @@ if (empty($lang) || !is_array($lang))
 }
 
 $lang = array_merge($lang, [
+	'ACP_LOG_TOPIC_PREFIX_REPLY_SUMMARY' => '<strong>Removed old prefix from reply subjects</strong><br>» Old prefix: %1$s; forum #%2$d; updated: %3$d; unchanged: %4$d',
+	'ACP_LOG_TOPIC_PREFIX_RECOVERY_SUMMARY' => '<strong>Recovered missing topic tags</strong><br>» Approved groups: %1$d; topics: %2$d; assignments: %3$d; conflicts: %4$d',
+	'ACP_LOG_TOPIC_PREFIX_TITLE_SUMMARY' => '<strong>Removed old prefix from topic titles</strong><br>» Old prefix: %1$s; forum #%2$d; updated: %3$d; unchanged: %4$d',
 	'ACP_TOPIC_PREFIXES' => 'Topic tags',
 	'ACP_MANAGE_PREFIXES' => 'Manage tags',
 	'ACP_LOG_TAG_ADDED' => '<strong>Created topic tag</strong><br>» %s',

@@ -23,26 +23,58 @@ General > Board settings. The extension blocks a legacy upgrade while the board
 is enabled.
 
 Migration splits complete adjacent bracket sequences such as `[3.3][DEV]` into
-separate tags. Legacy prefixes duplicated within or across multiple forums are 
-consolidated into one tag available in each applicable forum when their decoded 
+separate tags. Legacy prefixes duplicated within or across multiple forums are
+consolidated into one tag available in each applicable forum when their decoded
 names and enabled states match. Other combined formats and same-name definitions with
 different enabled states remain separate. This upgrade is one-way; restore the
 pre-upgrade database backup to undo it.
 
-## Repairing topic tags
+## Repair tools
 
-Use the interactive command to split one tag into multiple separate tags or
-merge one tag into another existing tag. Splitting can repair combined formats
-that could not be handled automatically, such as `(A)(B)` or `A|B`:
+Before applying any repair, make a current database backup and disable the
+board. Each tool shows a preview and asks for confirmation before changing
+anything.
+
+### Repair tags
+
+Use this command to split a combined tag into separate tags or merge one tag
+into another:
 
 ```shell
 php bin/phpbbcli.php topicprefixes:repair-tags
 ```
 
-Use `--tag-id=ID` to repair one source tag. Back up the database and disable the
-board before running the command; the command enforces both an interactive
-backup confirmation and maintenance mode. Every proposed change is previewed
-and must be confirmed before any data changes.
+To repair a specific tag, add `--tag-id=ID`.
+
+### Repair topics
+
+Use this command to repair missing topic tags or old prefixes, usually after
+upgrading from version 1 to version 2:
+
+```shell
+php bin/phpbbcli.php topicprefixes:repair-topics
+```
+
+Choose the action that matches the problem:
+
+- **Recover missing topic tags:** use when a topic still shows its old prefix
+  and has no tag.
+- **Clean leftover topic titles:** use when tags migrated correctly but old
+  prefix text remains in topic titles.
+- **Clean historical reply subjects:** optionally remove old prefixes from
+  replies. Reply subjects are normally kept as part of the discussion history.
+
+Missing-tag candidates are grouped by forum and inferred tags. You can review
+each group in pages of 20, stop previewing at any page, then approve or skip the
+whole group. The confirmation reports how many candidates were and were not
+previewed. Each completed repair action creates one administrator-log summary.
+
+For title or reply cleanup, enter the old prefix exactly as shown and select the
+forum to repair. If post subjects change, rebuild the search index in ACP >
+Maintenance > Search index.
+
+Some missing information cannot be recovered from the current database. If the
+tool cannot identify the old tag, use a pre-upgrade backup to determine it.
 
 📦 [Download](https://www.phpbb.com/customise/db/extension/topicprefixes/) the latest release of this extension.
 
