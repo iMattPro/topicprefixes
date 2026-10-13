@@ -115,12 +115,6 @@ class assignment_manager
 		}
 
 		$this->db->sql_transaction('begin');
-		if ($remove)
-		{
-			$this->db->sql_query('DELETE FROM ' . $this->topic_map_table . '
-				WHERE topic_id = ' . $topic_id . '
-					AND ' . $this->db->sql_in_set('prefix_id', $remove));
-		}
 		$rows = [];
 		foreach ($add as $tag_id)
 		{
@@ -129,6 +123,12 @@ class assignment_manager
 		if ($rows)
 		{
 			$this->db->sql_multi_insert($this->topic_map_table, $rows);
+		}
+		if ($remove)
+		{
+			$this->db->sql_query('DELETE FROM ' . $this->topic_map_table . '
+				WHERE topic_id = ' . $topic_id . '
+					AND ' . $this->db->sql_in_set('prefix_id', $remove));
 		}
 		$this->db->sql_transaction('commit');
 		$this->topic_tag_ids[$topic_id] = $tag_ids;
