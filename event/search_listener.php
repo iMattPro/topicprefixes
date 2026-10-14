@@ -10,6 +10,8 @@
 
 namespace phpbb\topicprefixes\event;
 
+use phpbb\auth\auth;
+use phpbb\config\config;
 use phpbb\language\language;
 use phpbb\request\request;
 use phpbb\template\template;
@@ -45,8 +47,20 @@ class search_listener implements EventSubscriberInterface
 	/** @var language Language object */
 	protected $language;
 
-	/** @var array|null Selected tag identifiers */
-	protected $selected_ids;
+	/** @var auth Authorization service */
+	protected $auth;
+
+	/** @var config Board configuration */
+	protected $config;
+
+	/** @var array|null Selected exact tag records */
+	protected $selected_tags;
+
+	/** @var string all or any */
+	protected $match = 'all';
+
+	/** @var bool Whether current request is tag-only */
+	protected $tag_only = false;
 
 	/** @var array Tags grouped by topic identifier */
 	protected $search_tags = [];
@@ -56,6 +70,9 @@ class search_listener implements EventSubscriberInterface
 
 	/** @var string Unfiltered search URL */
 	protected $filter_url = '';
+
+	/** @var string URL with no tag filter or match mode */
+	protected $clear_filter_url = '';
 
 	/** @var bool Whether extension language has been loaded */
 	protected $language_loaded = false;
@@ -73,8 +90,10 @@ class search_listener implements EventSubscriberInterface
 	 * @param request            $request     Request object
 	 * @param template           $template    Template object
 	 * @param language           $language    Language object
+	 * @param auth               $auth        Authorization service
+	 * @param config             $config      Board configuration
 	 */
-	public function __construct(manager $manager, assignment_manager $assignments, filter $filter, renderer $renderer, request $request, template $template, language $language)
+	public function __construct(manager $manager, assignment_manager $assignments, filter $filter, renderer $renderer, request $request, template $template, language $language, auth $auth, config $config)
 	{
 		$this->manager = $manager;
 		$this->assignments = $assignments;
@@ -83,6 +102,8 @@ class search_listener implements EventSubscriberInterface
 		$this->request = $request;
 		$this->template = $template;
 		$this->language = $language;
+		$this->auth = $auth;
+		$this->config = $config;
 	}
 
 	/**
@@ -91,18 +112,159 @@ class search_listener implements EventSubscriberInterface
 	public static function getSubscribedEvents(): array
 	{
 		return [
+			'core.search_modify_submit_parameters' => 'validate_submission',
+			'core.search_modify_param_before' => 'configure_tag_only_search',
 			'core.search_native_by_keyword_modify_search_key' => 'filter_backend',
 			'core.search_native_by_author_modify_search_key' => 'filter_backend',
 			'core.search_mysql_by_keyword_modify_search_key' => 'filter_backend',
 			'core.search_mysql_by_author_modify_search_key' => 'filter_backend',
 			'core.search_postgres_by_keyword_modify_search_key' => 'filter_backend',
 			'core.search_postgres_by_author_modify_search_key' => 'filter_backend',
+			'core.search_backend_search_after' => 'search_by_tags',
 			'core.search_modify_param_after' => 'filter_predefined_search',
 			'core.get_unread_topics_modify_sql' => 'filter_unread_topics',
 			'core.search_modify_url_parameters' => 'preserve_filter_url',
 			'core.search_modify_rowset' => 'load_search_tags',
 			'core.search_modify_tpl_ary' => 'add_search_tags',
+			'core.search_modify_forum_select_list' => 'configure_search_form',
 		];
+	}
+
+	/**
+	 * Make tag-only submissions enter phpBB search and reject unsupported Sphinx combinations.
+	 *
+	 * @param \phpbb\event\data $event Event data
+	 * @return void
+	 */
+	public function validate_submission($event): void
+	{
+		if (empty($this->config['topicprefixes_search_enabled']))
+		{
+			return;
+		}
+
+		if (!$this->get_selected_tags())
+		{
+			return;
+		}
+
+		$this->filterable = true;
+		$event['submit'] = true;
+		$combined = trim((string) $event['keywords']) !== ''
+			|| trim((string) $event['author']) !== ''
+			|| !empty($event['author_id']);
+		if ($combined && (string) $this->config['search_type'] === '\\phpbb\\search\\fulltext_sphinx')
+		{
+			$this->load_language();
+			trigger_error($this->language->lang('TOPIC_TAG_SEARCH_SPHINX_UNSUPPORTED'));
+		}
+	}
+
+	/**
+	 * Force tag-only searches to topic results.
+	 *
+	 * @param \phpbb\event\data $event Event data
+	 * @return void
+	 */
+	public function configure_tag_only_search($event): void
+	{
+		if (empty($this->config['topicprefixes_search_enabled']))
+		{
+			return;
+		}
+
+		$this->tag_only = !empty($this->get_selected_tags())
+			&& (string) $event['keywords'] === ''
+			&& empty($event['author_id_ary'])
+			&& (string) $event['search_id'] === '';
+		if ($this->tag_only)
+		{
+			$event['show_results'] = 'topics';
+			$sort_by_sql = $event['sort_by_sql'];
+			$sort_by_sql['a'] = 'u.username_clean';
+			$sort_by_sql['t'] = 't.topic_last_post_time';
+			$sort_by_sql['f'] = 'f.forum_id';
+			$sort_by_sql['i'] = 't.topic_title';
+			$sort_by_sql['s'] = 't.topic_title';
+			$event['sort_by_sql'] = $sort_by_sql;
+			$this->filterable = true;
+		}
+	}
+
+	/**
+	 * Supply IDs for searches containing tags but no keywords or author.
+	 *
+	 * @param \phpbb\event\data $event Event data
+	 * @return void
+	 */
+	public function search_by_tags($event): void
+	{
+		if (empty($this->config['topicprefixes_search_enabled']) || !$this->tag_only)
+		{
+			return;
+		}
+
+		[$ids, $total, $start] = $this->filter->search_topic_ids(
+			$this->get_selected_ids(),
+			$this->get_match(),
+			$event['ex_fid_ary'],
+			(string) $event['sort_key'],
+			(string) $event['sort_dir'],
+			(int) $event['sort_days'],
+			(int) $event['start'],
+			(int) $event['per_page']
+		);
+		$event['id_ary'] = $ids;
+		$event['total_match_count'] = $total;
+		$event['start'] = $start;
+	}
+
+	/**
+	 * Preload permission-filtered tags for advanced search.
+	 *
+	 * @return void
+	 */
+	public function configure_search_form(): void
+	{
+		if (empty($this->config['topicprefixes_search_enabled']))
+		{
+			return;
+		}
+
+		$this->load_language();
+		$readable = array_keys($this->auth->acl_getf('f_read', true));
+		$searchable = array_keys($this->auth->acl_getf('f_search', true));
+		$listable = array_keys($this->auth->acl_getf('f_list_topics', true));
+		$forum_ids = array_values(array_intersect($readable, $searchable, $listable));
+		$catalog = $this->manager->get_search_catalog($forum_ids);
+
+		// Retain explicitly selected historical tags when reopening search.
+		foreach ($this->get_selected_tags() as $tag_id => $tag)
+		{
+			$catalog[$tag_id] = $tag;
+		}
+		uasort($catalog, static function ($a, $b) {
+			return $a['prefix_order'] <=> $b['prefix_order'];
+		});
+
+		$payload = [];
+		foreach ($catalog as $tag)
+		{
+			$payload[] = [
+				(int) $tag['prefix_id'],
+				$tag['prefix_tag'],
+				strtoupper($tag['prefix_color']),
+				$tag['search_name'],
+				$this->renderer->contrast_color($tag['prefix_color']),
+			];
+		}
+
+		$this->template->assign_vars([
+			'S_TOPIC_TAG_SEARCH' => !empty($payload),
+			'TOPIC_TAG_SEARCH_CATALOG' => json_encode($payload, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT),
+			'TOPIC_TAG_SEARCH_SELECTED' => implode(',', $this->get_selected_ids()),
+			'TOPIC_TAG_SEARCH_MATCH' => $this->get_match(),
+		]);
 	}
 
 	/**
@@ -137,7 +299,7 @@ class search_listener implements EventSubscriberInterface
 		$topic_id = $event['show_results'] === 'posts' ? 'p.topic_id' : 't.topic_id';
 		$event['sql'] = $this->add_condition_before_order_by(
 			(string) $event['sql'],
-			$this->filter->topic_id_condition($topic_id, $selected_ids)
+			$this->filter->topic_id_tags_condition($topic_id, $selected_ids, $this->get_match())
 		);
 	}
 
@@ -164,7 +326,7 @@ class search_listener implements EventSubscriberInterface
 		$sql_array = $event['sql_array'];
 		$sql_array['WHERE'] = $this->add_condition_before_order_by(
 			$sql_array['WHERE'],
-			$this->filter->topic_id_condition('t.topic_id', $selected_ids)
+			$this->filter->topic_id_tags_condition('t.topic_id', $selected_ids, $this->get_match())
 		);
 		$event['sql_array'] = $sql_array;
 	}
@@ -193,9 +355,9 @@ class search_listener implements EventSubscriberInterface
 		}
 
 		$post_visibility = (string) $event['post_visibility'];
-		$event['post_visibility'] = '(' . $post_visibility . ') AND ' . $this->filter->topic_id_condition('p.topic_id', $selected_ids);
+		$event['post_visibility'] = '(' . $post_visibility . ') AND ' . $this->filter->topic_id_tags_condition('p.topic_id', $selected_ids, $this->get_match());
 		$search_key = $event['search_key_array'];
-		$search_key[] = 'topicprefixes:' . implode(',', $selected_ids);
+		$search_key[] = 'topicprefixes:' . $this->get_match() . ':' . implode(',', $this->get_selected_ids());
 		$event['search_key_array'] = $search_key;
 	}
 
@@ -212,7 +374,10 @@ class search_listener implements EventSubscriberInterface
 			return;
 		}
 
-		$this->filter_url = (string) $event['u_search'];
+		$this->clear_filter_url = (string) $event['u_search'];
+		$this->filter_url = $this->get_match() === 'any'
+			? $this->append_url_parameter($this->clear_filter_url, 'tag_match=any')
+			: $this->clear_filter_url;
 		$event['u_search'] = $this->renderer->url_with_tags($this->filter_url, $this->get_selected_ids());
 	}
 
@@ -236,17 +401,12 @@ class search_listener implements EventSubscriberInterface
 			return;
 		}
 
-		$visible_tags = [];
-		foreach ($this->search_tags as $tags)
-		{
-			$visible_tags += $tags;
-		}
 		$selected_ids = $this->get_selected_ids();
-		$selected_tags = array_intersect_key($visible_tags, array_fill_keys($selected_ids, true));
+		$selected_tags = $this->get_selected_tags();
 		$this->template->assign_vars([
 			'S_SEARCH_TOPIC_TAG_FILTERED' => !empty($selected_ids),
 			'SEARCH_TOPIC_TAG_FILTERS' => $this->renderer->render_for_url($selected_tags, $this->filter_url, $selected_ids),
-			'U_CLEAR_SEARCH_TOPIC_TAG_FILTERS' => $this->filter_url,
+			'U_CLEAR_SEARCH_TOPIC_TAG_FILTERS' => $this->clear_filter_url,
 		]);
 	}
 
@@ -269,28 +429,61 @@ class search_listener implements EventSubscriberInterface
 	}
 
 	/**
-	 * Parse and validate selected tags once without loading topic assignments.
+	 * Parse and resolve selected exact tags once.
 	 *
-	 * @return array Selected tag identifiers
+	 * @return array Search-ready tags keyed by identifier
 	 */
-	protected function get_selected_ids(): array
+	protected function get_selected_tags(): array
 	{
-		if ($this->selected_ids !== null)
+		if ($this->selected_tags !== null)
 		{
-			return $this->selected_ids;
+			return $this->selected_tags;
 		}
 
 		$value = trim($this->request->variable('tags', ''));
 		if ($value === '' || !preg_match('/^\d+(?:,\d+)*$/D', $value))
 		{
-			return $this->selected_ids = [];
+			return $this->selected_tags = [];
 		}
 
 		$requested_ids = array_values(array_unique(array_filter(array_map('intval', explode(',', $value)))));
-		$tags = $requested_ids ? $this->manager->get_tags_by_ids($requested_ids) : [];
-		$this->selected_ids = array_values(array_intersect($requested_ids, array_keys($tags)));
-		sort($this->selected_ids, SORT_NUMERIC);
-		return $this->selected_ids;
+		$this->selected_tags = $requested_ids ? $this->manager->resolve_search_tags($requested_ids) : [];
+		return $this->selected_tags;
+	}
+
+	/**
+	 * Get selected tag identifiers.
+	 *
+	 * @return array Tag identifiers
+	 */
+	protected function get_selected_ids(): array
+	{
+		$ids = array_map('intval', array_keys($this->get_selected_tags()));
+		sort($ids, SORT_NUMERIC);
+		return $ids;
+	}
+
+	/**
+	 * Get requested matching mode.
+	 *
+	 * @return string all or any
+	 */
+	protected function get_match(): string
+	{
+		$match = (string) $this->request->variable('tag_match', 'all');
+		return $this->match = $match === 'any' ? 'any' : 'all';
+	}
+
+	/**
+	 * Append one HTML-safe URL parameter.
+	 *
+	 * @param string $url       Base URL
+	 * @param string $parameter Encoded name=value pair
+	 * @return string URL
+	 */
+	protected function append_url_parameter(string $url, string $parameter): string
+	{
+		return $url . (strpos($url, '?') === false ? '?' : '&amp;') . $parameter;
 	}
 
 	/**

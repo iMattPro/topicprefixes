@@ -50,6 +50,34 @@ class functional_test extends \phpbb_functional_test_case
 	/**
 	 * @depends test_acp_module
 	 */
+	public function test_board_feature_search_setting_is_opt_in_and_can_be_enabled($module_ready)
+	{
+		self::assertTrue($module_ready);
+		$this->login();
+		$this->admin_login();
+		$this->get_db();
+		$result = $this->db->sql_query("SELECT config_value FROM phpbb_config WHERE config_name = 'topicprefixes_search_enabled'");
+		self::assertSame('0', (string) $this->db->sql_fetchfield('config_value'));
+		$this->db->sql_freeresult($result);
+
+		$crawler = self::request('GET', 'adm/index.php?i=acp_board&mode=features&sid=' . $this->sid);
+		$this->assertContainsLang('ALLOW_TOPIC_TAG_SEARCH', $crawler->filter('form#acp_board')->text());
+		self::assertSame('checked', $crawler->filter('input[name="config[topicprefixes_search_enabled]"][value="0"]')->attr('checked'));
+
+		$form = $crawler->selectButton($this->lang('SUBMIT'))->form();
+		$values = $form->getPhpValues();
+		$values['config']['topicprefixes_search_enabled'] = '1';
+		$crawler = self::$client->request($form->getMethod(), $form->getUri(), $values);
+		self::assert_response_html();
+		$this->assertContainsLang('CONFIG_UPDATED', $crawler->text());
+		$this->purge_cache();
+
+		return true;
+	}
+
+	/**
+	 * @depends test_acp_module
+	 */
 	public function test_acp_decodes_forum_name_entities($module_ready)
 	{
 		self::assertTrue($module_ready);
@@ -185,11 +213,11 @@ class functional_test extends \phpbb_functional_test_case
 	}
 
 	/**
-	 * @depends test_acp_module
+	 * @depends test_board_feature_search_setting_is_opt_in_and_can_be_enabled
 	 */
-	public function test_create_shared_tagged_topic($module_ready)
+	public function test_create_shared_tagged_topic($search_enabled)
 	{
-		self::assertTrue($module_ready);
+		self::assertTrue($search_enabled);
 		$this->login();
 		$this->admin_login();
 		$bug_id = $this->create_tag('Bug filter', '#d4351c', array(self::FORUM_ID));
@@ -397,6 +425,15 @@ class functional_test extends \phpbb_functional_test_case
 	public function test_search_topic_results_filter_with_visible_tag_links($fixture)
 	{
 		$this->login();
+		$crawler = self::request('GET', "search.php?sid={$this->sid}");
+		self::assertCount(1, $crawler->filter('#topic-tag-search-input'));
+		$this->assertContainsLang('TOPIC_TAG_SEARCH', $crawler->filter('dl.topic-tag-search')->text());
+		self::assertStringContainsString('PHP 8.4 filter', $crawler->filter('#topic-tag-search-catalog')->text());
+
+		$crawler = self::request('GET', 'search.php?submit=1&tags=' . $fixture['php_id'] . "&sid={$this->sid}");
+		self::assertStringContainsString('Structured tag title', $crawler->filter('ul.topiclist.topics')->text());
+		self::assertCount(1, $crawler->filter('.topic-tag-filter-panel .topic-tag-selected'));
+
 		$crawler = self::request('GET', 'search.php?author_id=2&sr=topics&tags=' . $fixture['php_id'] . "&sid={$this->sid}");
 		self::assertStringContainsString('PHP 8.4 filter', $crawler->filter('ul.topiclist .topic-tag')->text());
 		self::assertGreaterThanOrEqual(1, $crawler->filter('ul.topiclist a.topic-tag')->count());

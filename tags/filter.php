@@ -32,6 +32,9 @@ class filter
 	/** @var string Topics table */
 	protected $topics_table;
 
+	/** @var string Users table */
+	protected $users_table;
+
 	/**
 	 * Constructor.
 	 *
@@ -40,14 +43,16 @@ class filter
 	 * @param auth               $auth            Permission service
 	 * @param string             $topic_map_table Topic/tag map table
 	 * @param string             $topics_table    Topics table
+	 * @param string             $users_table     Users table
 	 */
-	public function __construct(driver_interface $db, content_visibility $visibility, auth $auth, string $topic_map_table, string $topics_table)
+	public function __construct(driver_interface $db, content_visibility $visibility, auth $auth, string $topic_map_table, string $topics_table, string $users_table)
 	{
 		$this->db = $db;
 		$this->visibility = $visibility;
 		$this->auth = $auth;
 		$this->topic_map_table = $topic_map_table;
 		$this->topics_table = $topics_table;
+		$this->users_table = $users_table;
 	}
 
 	/**
@@ -222,6 +227,107 @@ class filter
 		return $topic_id . ' IN (
 			' . $subquery . '
 		)';
+	}
+
+	/**
+	 * Build search condition for selected tag identifiers.
+	 *
+	 * @param string $topic_id Topic ID SQL expression
+	 * @param array  $tag_ids  Selected tag identifiers
+	 * @param string $match    all or any
+	 * @return string SQL condition
+	 */
+	public function topic_id_tags_condition(string $topic_id, array $tag_ids, string $match = 'all'): string
+	{
+		$tag_ids = array_values(array_unique(array_filter(array_map('intval', $tag_ids))));
+		if (!$tag_ids)
+		{
+			return '1=1';
+		}
+
+		if ($match === 'any')
+		{
+			return $topic_id . ' IN (
+				SELECT tpf.topic_id
+				FROM ' . $this->topic_map_table . ' tpf
+				WHERE ' . $this->db->sql_in_set('tpf.prefix_id', $tag_ids) . '
+			)';
+		}
+
+		return $this->topic_id_condition($topic_id, $tag_ids);
+	}
+
+	/**
+	 * Search visible topic IDs using only selected tags.
+	 *
+	 * @param array  $tag_ids      Selected tag identifiers
+	 * @param string $match        all or any
+	 * @param array  $excluded_forums Forum IDs excluded by phpBB search
+	 * @param string $sort_key     phpBB topic sort key
+	 * @param string $sort_dir     a or d
+	 * @param int    $sort_days    Maximum topic age in days
+	 * @param int    $start        Requested result offset
+	 * @param int    $per_page     Results per page
+	 * @return array IDs, total count, and validated offset
+	 */
+	public function search_topic_ids(array $tag_ids, string $match, array $excluded_forums, string $sort_key, string $sort_dir, int $sort_days, int $start, int $per_page): array
+	{
+		$where = 't.topic_moved_id = 0
+			AND ' . $this->topic_id_tags_condition('t.topic_id', $tag_ids, $match) . '
+			AND ' . $this->visibility->get_global_visibility_sql('topic', $excluded_forums, 't.');
+		if ($sort_days > 0)
+		{
+			$where .= ' AND t.topic_last_post_time >= ' . (time() - ($sort_days * 86400));
+		}
+
+		$result = $this->db->sql_query('SELECT COUNT(t.topic_id) AS total
+			FROM ' . $this->topics_table . ' t
+			WHERE ' . $where);
+		$total = (int) $this->db->sql_fetchfield('total');
+		$this->db->sql_freeresult($result);
+
+		$per_page = max(1, $per_page);
+		$start = max(0, $start);
+		if ($total && $start >= $total)
+		{
+			$start = (int) (floor(($total - 1) / $per_page) * $per_page);
+		}
+
+		$join = '';
+		switch ($sort_key)
+		{
+			case 'a':
+				$join = ' LEFT JOIN ' . $this->users_table . ' u ON u.user_id = t.topic_poster';
+				$order_by = 'u.username_clean';
+			break;
+
+			case 'f':
+				$order_by = 't.forum_id';
+			break;
+
+			case 'i':
+			case 's':
+				$order_by = 't.topic_title';
+			break;
+
+			default:
+				$order_by = 't.topic_last_post_time';
+			break;
+		}
+
+		$sql = 'SELECT t.topic_id
+			FROM ' . $this->topics_table . ' t' . $join . '
+			WHERE ' . $where . '
+			ORDER BY ' . $order_by . ($sort_dir === 'a' ? ' ASC' : ' DESC') . ', t.topic_id ASC';
+		$result = $this->db->sql_query_limit($sql, $per_page, $start);
+		$ids = [];
+		while ($row = $this->db->sql_fetchrow($result))
+		{
+			$ids[] = (int) $row['topic_id'];
+		}
+		$this->db->sql_freeresult($result);
+
+		return [$ids, $total, $start];
 	}
 
 	/**

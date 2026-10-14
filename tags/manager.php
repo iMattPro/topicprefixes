@@ -111,6 +111,71 @@ class manager
 	}
 
 	/**
+	 * Get exact search tags selected by definition ID.
+	 *
+	 * @param array $tag_ids Submitted tag definition identifiers
+	 * @return array Search-ready tags keyed by identifier
+	 */
+	public function resolve_search_tags(array $tag_ids): array
+	{
+		$requested = array_fill_keys(array_filter(array_map('intval', $tag_ids)), true);
+		if (!$requested)
+		{
+			return [];
+		}
+
+		$selected = [];
+		foreach ($this->get_tags_by_ids(array_keys($requested)) as $tag_id => $tag)
+		{
+			$selected[(int) $tag_id] = $this->prepare_search_tag((int) $tag_id, $tag);
+		}
+
+		return $selected;
+	}
+
+	/**
+	 * Get enabled tag definitions available in searchable forums.
+	 *
+	 * @param array $forum_ids Forums current user may search
+	 * @return array Search-ready tags keyed by identifier
+	 */
+	public function get_search_catalog(array $forum_ids): array
+	{
+		$forum_ids = array_fill_keys(array_filter(array_map('intval', $forum_ids)), true);
+		if (!$forum_ids)
+		{
+			return [];
+		}
+
+		$catalog = $this->get_catalog();
+		$tags = [];
+		foreach ($catalog['tags'] as $tag_id => $tag)
+		{
+			$available = array_intersect_key(
+				$forum_ids,
+				array_fill_keys($catalog['tag_forums'][$tag_id] ?? [], true)
+			);
+			if (!empty($tag['prefix_enabled']) && $available)
+			{
+				$tags[(int) $tag_id] = $this->prepare_search_tag((int) $tag_id, $tag);
+			}
+		}
+
+		return $tags;
+	}
+
+	/**
+	 * Normalize tag text for client-side autocomplete matching.
+	 *
+	 * @param string $name Decoded tag name
+	 * @return string Case-insensitive phpBB search key
+	 */
+	public static function search_name_key(string $name): string
+	{
+		return utf8_clean_string(trim($name));
+	}
+
+	/**
 	 * Get tags available in one forum.
 	 *
 	 * @param int  $forum_id    Forum identifier
@@ -540,6 +605,21 @@ class manager
 		}
 
 		return $catalog;
+	}
+
+	/**
+	 * Prepare one exact tag definition for search autocomplete.
+	 *
+	 * @param int   $tag_id Tag identifier
+	 * @param array $tag    Tag definition
+	 * @return array Search-ready tag record
+	 */
+	protected function prepare_search_tag(int $tag_id, array $tag): array
+	{
+		$tag['prefix_id'] = $tag_id;
+		$tag['prefix_order'] = (int) $tag['prefix_order'];
+		$tag['search_name'] = self::search_name_key($tag['prefix_tag']);
+		return $tag;
 	}
 
 	/**

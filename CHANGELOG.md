@@ -8,6 +8,7 @@
 - Redesigned ACP management with a responsive tag catalog, sticky editor, searchable forum assignments, drag-and-drop ordering, and AJAX updates.
 - Added accessible tag selection when creating topics or editing their first posts.
 - Added clickable filters that combine multiple tags using AND matching in forum lists, category Active Topics, and SQL-backed keyword or author search results shown as topics or posts.
+- Added opt-in, permission-filtered tag autocomplete to advanced search, including tag-only topic search and all/any matching.
 - Preserved tags through topic moves, splits, forks, and merges, including tags retained after moving into forums where they are unavailable for new assignments.
 - Added a safe, restartable upgrade that converts legacy prefixes and assignments into tags while removing matching prefix text from topic titles and first-post subjects.
 - Added automatic splitting of complete adjacent bracket sequences and consolidation of duplicate legacy definitions with matching names and enabled states, while preserving malformed formats and same-name definitions with conflicting states.

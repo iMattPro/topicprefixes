@@ -108,6 +108,49 @@ class tag_manager_test extends tags_base
 		self::assertArrayNotHasKey(1, $this->create_tag_manager()->get_available_tags(2));
 	}
 
+	public function test_search_catalog_keeps_duplicate_names_and_colors_separate(): void
+	{
+		$this->insert_explicit_rows('phpbb_topic_prefixes', [
+			[
+				'prefix_id' => 5,
+				'prefix_tag' => 'bug',
+				'prefix_color' => '1D70B8',
+				'prefix_enabled' => 1,
+				'prefix_order' => 5,
+			],
+			[
+				'prefix_id' => 6,
+				'prefix_tag' => 'BUG',
+				'prefix_color' => '00703C',
+				'prefix_enabled' => 0,
+				'prefix_order' => 6,
+			],
+		]);
+		$this->insert_explicit_rows('phpbb_topic_prefixes_forums', [
+			['forum_id' => 2, 'prefix_id' => 5],
+			['forum_id' => 2, 'prefix_id' => 6],
+		]);
+
+		$manager = $this->create_tag_manager();
+		$catalog = $manager->get_search_catalog([2]);
+		self::assertArrayHasKey(1, $catalog);
+		self::assertArrayHasKey(5, $catalog);
+		self::assertArrayNotHasKey(6, $catalog);
+		self::assertSame(1, (int) $catalog[1]['prefix_id']);
+		self::assertSame(5, (int) $catalog[5]['prefix_id']);
+		self::assertSame('bug', $catalog[5]['search_name']);
+		self::assertSame('D4351C', $catalog[1]['prefix_color']);
+		self::assertSame('1D70B8', $catalog[5]['prefix_color']);
+		self::assertArrayNotHasKey(3, $catalog);
+
+		$selected = $manager->resolve_search_tags([5, 6]);
+		self::assertSame([5, 6], array_keys($selected));
+		self::assertSame(5, (int) $selected[5]['prefix_id']);
+		self::assertSame(6, (int) $selected[6]['prefix_id']);
+		self::assertSame('1D70B8', $selected[5]['prefix_color']);
+		self::assertSame('00703C', $selected[6]['prefix_color']);
+	}
+
 	public function test_deleted_forum_availability_is_removed()
 	{
 		$manager = $this->create_tag_manager();

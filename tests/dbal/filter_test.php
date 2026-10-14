@@ -31,13 +31,16 @@ class filter_test extends tags_base
 		$visibility->method('get_forums_visibility_sql')->willReturnCallback(static function ($mode, $forum_ids, $alias) use ($see_hidden) {
 			return $see_hidden ? '1=1' : $alias . 'topic_visibility = ' . ITEM_APPROVED;
 		});
+		$visibility->method('get_global_visibility_sql')->willReturnCallback(static function ($mode, $forum_ids, $alias) use ($see_hidden) {
+			return $see_hidden ? '1=1' : $alias . 'topic_visibility = ' . ITEM_APPROVED;
+		});
 		$auth = $this->getMockBuilder('\phpbb\auth\auth')->disableOriginalConstructor()->getMock();
 		$auth->method('acl_getf')->willReturnCallback(static function ($permission) use ($readable_forums, $listable_forums) {
 			$forums = $permission === 'f_read' ? $readable_forums : $listable_forums;
 			return array_fill_keys($forums, [$permission => true]);
 		});
 
-		return new \phpbb\topicprefixes\tags\filter($this->db, $visibility, $auth, 'phpbb_topic_prefixes_topics', 'phpbb_topics');
+		return new \phpbb\topicprefixes\tags\filter($this->db, $visibility, $auth, 'phpbb_topic_prefixes_topics', 'phpbb_topics', 'phpbb_users');
 	}
 
 	/**
@@ -66,6 +69,32 @@ class filter_test extends tags_base
 		self::assertStringStartsWith('p.topic_id IN', $condition);
 		self::assertStringContainsString('GROUP BY tpf.topic_id', $condition);
 		self::assertStringContainsString('HAVING COUNT(tpf.prefix_id) = 2', $condition);
+	}
+
+	public function test_tag_conditions_support_all_and_any(): void
+	{
+		$filter = $this->create_filter();
+		$all = $filter->topic_id_tags_condition('t.topic_id', [1, 2], 'all');
+		$any = $filter->topic_id_tags_condition('t.topic_id', [1, 2], 'any');
+
+		self::assertStringContainsString('GROUP BY tpf.topic_id', $all);
+		self::assertStringContainsString('HAVING COUNT(tpf.prefix_id) = 2', $all);
+		self::assertStringContainsString('t.topic_id IN', $any);
+		self::assertStringNotContainsString('HAVING', $any);
+	}
+
+	public function test_tag_only_search_returns_paginated_topic_ids(): void
+	{
+		$filter = $this->create_filter();
+
+		list($ids, $total, $start) = $filter->search_topic_ids([1, 2], 'all', [], 't', 'd', 0, 0, 25);
+		self::assertSame([10], $ids);
+		self::assertSame(1, $total);
+		self::assertSame(0, $start);
+
+		list($ids, $total) = $filter->search_topic_ids([1, 2], 'any', [], 't', 'd', 0, 0, 2);
+		self::assertSame([10, 11], $ids);
+		self::assertSame(3, $total);
 	}
 
 	/**

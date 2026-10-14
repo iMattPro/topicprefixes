@@ -21,6 +21,8 @@ if (empty($lang) || !is_array($lang))
 $lang = array_merge($lang, [
 	'TOPIC_TAGS' => 'Topic tags',
 	'TOPIC_TAGS_EXPLAIN' => 'Create administrator-curated topic tags, set their display order, and choose where each tag is available.',
+	'ALLOW_TOPIC_TAG_SEARCH' => 'Allow topic tag search',
+	'ALLOW_TOPIC_TAG_SEARCH_EXPLAIN' => 'Allow topic tag search controls on the advanced search page.',
 	'TOPIC_TAGS_REPAIR_CLI' => 'Maintenance tools',
 	'TOPIC_TAGS_REPAIR_CLI_EXPLAIN' => 'Command-line tools for repairing topic tags and removing old prefixes from topic titles and reply subjects. They can be run from your board root:',
 	'TOPIC_TAGS_REPAIR_TAGS' => '&bull; Split or merge topic tags:',

@@ -94,6 +94,15 @@ services:
             - '@request'
             - '@template'
             - '@language'
+            - '@auth'
+            - '@config'
+        tags:
+            - { name: event.listener }
+
+    phpbb.topicprefixes.acp_board_listener:
+        class: phpbb\topicprefixes\event\acp_board_listener
+        arguments:
+            - '@language'
         tags:
             - { name: event.listener }
 
@@ -150,6 +159,7 @@ services:
             - '@auth'
             - '%phpbb.topicprefixes.tables.topic_prefixes_topics%'
             - '%tables.topics%'
+            - '%tables.users%'
 
     phpbb.topicprefixes.tags.repairer:
         class: phpbb\topicprefixes\tags\repairer
