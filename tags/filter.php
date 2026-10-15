@@ -21,8 +21,10 @@ class filter
 {
 	/** @var driver_interface Database connection */
 	protected $db;
+
 	/** @var content_visibility Content visibility service */
 	protected $visibility;
+
 	/** @var auth Authorization service */
 	protected $auth;
 
@@ -34,6 +36,12 @@ class filter
 
 	/** @var string Users table */
 	protected $users_table;
+
+	/** @var array|null Forums current user may read */
+	protected $readable_forum_ids;
+
+	/** @var array|null Forums current user may read and list topics in */
+	protected $readable_listable_forum_ids;
 
 	/**
 	 * Constructor.
@@ -73,9 +81,8 @@ class filter
 			return [];
 		}
 
-		$readable_forums = array_keys($this->auth->acl_getf('f_read', true));
-		$listable_forums = array_keys($this->auth->acl_getf('f_list_topics', true));
-		$shadow_forums = array_values(array_intersect($readable_forums, $listable_forums));
+		$readable_forums = $this->get_readable_forum_ids();
+		$shadow_forums = $this->get_readable_listable_forum_ids();
 		$local_visibility = $this->visibility->get_visibility_sql('topic', $forum_id, 't.');
 
 		$global_condition = '1=0';
@@ -145,9 +152,7 @@ class filter
 			return [];
 		}
 
-		$readable_forums = array_keys($this->auth->acl_getf('f_read', true));
-		$listable_forums = array_keys($this->auth->acl_getf('f_list_topics', true));
-		$destination_forums = array_values(array_intersect($readable_forums, $listable_forums));
+		$destination_forums = $this->get_readable_listable_forum_ids();
 		$destination_condition = '1=0';
 		if ($destination_forums)
 		{
@@ -177,6 +182,40 @@ class filter
 		$this->db->sql_freeresult($result);
 
 		return $topic_map;
+	}
+
+	/**
+	 * Get forums current user may read.
+	 *
+	 * @return array Forum identifiers
+	 */
+	protected function get_readable_forum_ids(): array
+	{
+		if ($this->readable_forum_ids === null)
+		{
+			$this->readable_forum_ids = array_keys($this->auth->acl_getf('f_read', true));
+		}
+
+		return $this->readable_forum_ids;
+	}
+
+	/**
+	 * Get forums current user may read and list topics in.
+	 *
+	 * @return array Forum identifiers
+	 */
+	protected function get_readable_listable_forum_ids(): array
+	{
+		if ($this->readable_listable_forum_ids === null)
+		{
+			$listable_forums = array_keys($this->auth->acl_getf('f_list_topics', true));
+			$this->readable_listable_forum_ids = array_values(array_intersect(
+				$this->get_readable_forum_ids(),
+				$listable_forums
+			));
+		}
+
+		return $this->readable_listable_forum_ids;
 	}
 
 	/**
