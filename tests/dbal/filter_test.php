@@ -58,7 +58,7 @@ class filter_test extends tags_base
 	 */
 	public function test_multiple_tags_use_and_semantics_without_duplicates()
 	{
-		self::assertStringContainsString('GROUP BY', $this->create_filter()->condition('t', [1, 2]));
+		self::assertSame(2, substr_count($this->create_filter()->condition('t', [1, 2]), 'EXISTS ('));
 		self::assertSame(array(10), $this->query_ids(array(1, 2)));
 	}
 
@@ -66,9 +66,10 @@ class filter_test extends tags_base
 	{
 		$condition = $this->create_filter()->topic_id_condition('p.topic_id', [1, 2]);
 
-		self::assertStringStartsWith('p.topic_id IN', $condition);
-		self::assertStringContainsString('GROUP BY tpf.topic_id', $condition);
-		self::assertStringContainsString('HAVING COUNT(tpf.prefix_id) = 2', $condition);
+		self::assertSame(2, substr_count($condition, 'EXISTS ('));
+		self::assertSame(2, substr_count($condition, 'tpf.topic_id = p.topic_id'));
+		self::assertStringContainsString('tpf.prefix_id = 1', $condition);
+		self::assertStringContainsString('tpf.prefix_id = 2', $condition);
 	}
 
 	public function test_tag_conditions_support_all_and_any(): void
@@ -77,10 +78,10 @@ class filter_test extends tags_base
 		$all = $filter->topic_id_tags_condition('t.topic_id', [1, 2], 'all');
 		$any = $filter->topic_id_tags_condition('t.topic_id', [1, 2], 'any');
 
-		self::assertStringContainsString('GROUP BY tpf.topic_id', $all);
-		self::assertStringContainsString('HAVING COUNT(tpf.prefix_id) = 2', $all);
-		self::assertStringContainsString('t.topic_id IN', $any);
-		self::assertStringNotContainsString('HAVING', $any);
+		self::assertSame(2, substr_count($all, 'EXISTS ('));
+		self::assertSame(1, substr_count($any, 'EXISTS ('));
+		self::assertStringContainsString('tpf.topic_id = t.topic_id', $any);
+		self::assertStringContainsString('tpf.prefix_id IN', $any);
 	}
 
 	public function test_tag_only_search_returns_paginated_topic_ids(): void

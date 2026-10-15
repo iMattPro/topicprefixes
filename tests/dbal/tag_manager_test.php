@@ -126,7 +126,7 @@ class tag_manager_test extends tags_base
 				'prefix_order' => 6,
 			],
 		]);
-		$this->insert_explicit_rows('phpbb_topic_prefixes_forums', [
+		$this->db->sql_multi_insert('phpbb_topic_prefixes_forums', [
 			['forum_id' => 2, 'prefix_id' => 5],
 			['forum_id' => 2, 'prefix_id' => 6],
 		]);
