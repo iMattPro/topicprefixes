@@ -66,63 +66,18 @@ class search_listener_test extends \phpbb_test_case
 		$listener->configure_search_form(new \phpbb\event\data([]));
 	}
 
-	/**
-	 * @dataProvider predefined_search_data
-	 */
-	public function test_predefined_search_adds_tag_condition_before_sorting(string $search_id, string $show_results, string $topic_id): void
+	public function test_submission_without_selected_tags_stays_inactive(): void
 	{
 		list($listener, $manager, $assignments, $filter, $renderer, $request) = $this->listener();
-		$request->method('variable')->willReturn('1');
-		$tags = $this->search_tags([1]);
-		$manager->expects(self::once())->method('resolve_search_tags')->with([1])->willReturn($tags);
-		$filter->expects(self::once())->method('topic_id_tags_condition')->with($topic_id, [1], 'all')->willReturn('TAG_CONDITION');
-
+		$request->method('variable')->willReturn('');
+		$manager->expects(self::never())->method('resolve_search_tags');
 		$event = new \phpbb\event\data([
-			'search_id' => $search_id,
-			'show_results' => $show_results,
-			'sql' => 'SELECT result_id FROM result_table WHERE VISIBLE ORDER BY result_id DESC',
+			'keywords' => '', 'author' => '', 'author_id' => 0, 'search_id' => '', 'submit' => false,
 		]);
-		$listener->filter_predefined_search($event);
 
-		self::assertSame(
-			'SELECT result_id FROM result_table WHERE VISIBLE AND TAG_CONDITION ORDER BY result_id DESC',
-			$event['sql']
-		);
-	}
+		$listener->validate_submission($event);
 
-	public function predefined_search_data(): array
-	{
-		return [
-			'active topics' => ['active_topics', 'topics', 't.topic_id'],
-			'new topics' => ['newposts', 'topics', 't.topic_id'],
-			'new posts' => ['newposts', 'posts', 'p.topic_id'],
-			'unanswered topics' => ['unanswered', 'topics', 't.topic_id'],
-			'unanswered posts' => ['unanswered', 'posts', 'p.topic_id'],
-		];
-	}
-
-	public function test_unread_search_filters_get_unread_topics_query(): void
-	{
-		list($listener, $manager, $assignments, $filter, $renderer, $request) = $this->listener();
-		$request->method('variable')->willReturn('1');
-		$tags = $this->search_tags([1]);
-		$manager->expects(self::once())->method('resolve_search_tags')->with([1])->willReturn($tags);
-		$filter->expects(self::once())->method('topic_id_tags_condition')->with('t.topic_id', [1], 'all')->willReturn('TAG_CONDITION');
-
-		$listener->filter_predefined_search(new \phpbb\event\data([
-			'search_id' => 'unreadposts',
-			'show_results' => 'topics',
-			'sql' => '',
-		]));
-		$event = new \phpbb\event\data([
-			'sql_array' => ['WHERE' => 'UNREAD AND VISIBLE ORDER BY t.topic_last_post_time DESC'],
-		]);
-		$listener->filter_unread_topics($event);
-
-		self::assertSame(
-			'UNREAD AND VISIBLE AND TAG_CONDITION ORDER BY t.topic_last_post_time DESC',
-			$event['sql_array']['WHERE']
-		);
+		self::assertFalse($event['submit']);
 	}
 
 	public function test_unsupported_search_paths_are_noops(): void
@@ -192,24 +147,6 @@ class search_listener_test extends \phpbb_test_case
 		self::assertSame('ORIGINAL_SQL', $event['sql_array']['WHERE']);
 	}
 
-	public function test_predefined_search_without_order_by_appends_tag_condition(): void
-	{
-		list($listener, $manager, $assignments, $filter, $renderer, $request) = $this->listener();
-		$request->method('variable')->willReturn('1');
-		$tags = $this->search_tags([1]);
-		$manager->method('resolve_search_tags')->with([1])->willReturn($tags);
-		$filter->method('topic_id_tags_condition')->with('t.topic_id', [1], 'all')->willReturn('TAG_CONDITION');
-
-		$event = new \phpbb\event\data([
-			'search_id' => 'active_topics',
-			'show_results' => 'topics',
-			'sql' => 'SELECT topic_id FROM topics WHERE VISIBLE',
-		]);
-		$listener->filter_predefined_search($event);
-
-		self::assertSame('SELECT topic_id FROM topics WHERE VISIBLE AND TAG_CONDITION', $event['sql']);
-	}
-
 	public function test_topic_backend_intersects_visibility_and_changes_cache_key(): void
 	{
 		list($listener, $manager, $assignments, $filter, $renderer, $request) = $this->listener();
@@ -227,7 +164,6 @@ class search_listener_test extends \phpbb_test_case
 		]);
 		$listener->filter_backend($event);
 
-		self::assertSame('(CORE_VISIBILITY) AND TAG_CONDITION', $event['post_visibility']);
 		self::assertSame(['original', 'topicprefixes:all:1,2'], $event['search_key_array']);
 	}
 
@@ -241,7 +177,6 @@ class search_listener_test extends \phpbb_test_case
 
 		$post = new \phpbb\event\data(['type' => 'posts', 'post_visibility' => 'VISIBLE', 'search_key_array' => []]);
 		$listener->filter_backend($post);
-		self::assertSame('(VISIBLE) AND TAG_CONDITION', $post['post_visibility']);
 		self::assertSame(['topicprefixes:all:1'], $post['search_key_array']);
 	}
 
@@ -427,7 +362,6 @@ class search_listener_test extends \phpbb_test_case
 			'type' => 'topics', 'post_visibility' => 'VISIBLE', 'search_key_array' => [],
 		]);
 		$listener->filter_backend($backend);
-		self::assertSame('(VISIBLE) AND ANY_TAG', $backend['post_visibility']);
 		self::assertSame(['topicprefixes:any:1,2'], $backend['search_key_array']);
 
 		$url = new \phpbb\event\data(['u_search' => './search.php?sr=topics']);
@@ -456,6 +390,25 @@ class search_listener_test extends \phpbb_test_case
 		}));
 
 		$listener->configure_search_form(new \phpbb\event\data(['rowset' => []]));
+	}
+
+	public function test_advanced_search_retains_and_orders_selected_historical_tags(): void
+	{
+		list($listener, $manager, $assignments, $filter, $renderer, $request, $template, $language, $auth) = $this->listener();
+		$request->method('variable')->willReturnCallback(static function ($name, $default) {
+			return $name === 'tags' ? '2,1' : $default;
+		});
+		$auth->method('acl_getf')->willReturn([2 => ['allowed' => true]]);
+		$manager->method('resolve_search_tags')->with([2, 1])->willReturn($this->search_tags([2, 1]));
+		$manager->method('get_search_catalog')->with([2])->willReturn($this->search_tags([3]));
+		$renderer->method('contrast_color')->willReturn('#FFFFFF');
+		$template->expects(self::once())->method('assign_vars')->with(self::callback(static function ($vars) {
+			$catalog = json_decode($vars['TOPIC_TAG_SEARCH_CATALOG'], true);
+			return [1, 2, 3] === array_column($catalog, 0)
+				&& $vars['TOPIC_TAG_SEARCH_SELECTED'] === '1,2';
+		}));
+
+		$listener->configure_search_form(new \phpbb\event\data([]));
 	}
 
 	public function test_sphinx_rejects_combined_tag_search(): void

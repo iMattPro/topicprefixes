@@ -174,6 +174,34 @@ class topic_repairer_test extends tags_base
 		));
 	}
 
+	public function test_existing_assignment_added_after_preview_is_a_conflict(): void
+	{
+		$this->enable_maintenance();
+		$this->db->sql_query("UPDATE phpbb_topics SET topic_title = 'Bug Topic' WHERE topic_id = 13");
+		$repairer = $this->repairer();
+		$plan = iterator_to_array($repairer->preview_recovery())[0];
+		$this->db->sql_query('INSERT INTO phpbb_topic_prefixes_topics (topic_id, prefix_id) VALUES (13, 1)');
+
+		$result = $repairer->apply($plan);
+
+		self::assertSame(1, $result['conflicts']);
+		self::assertSame('Bug Topic', $this->field('phpbb_topics', 'topic_title', 'topic_id = 13'));
+	}
+
+	public function test_forum_availability_removed_after_preview_is_a_conflict(): void
+	{
+		$this->enable_maintenance();
+		$this->db->sql_query("UPDATE phpbb_topics SET topic_title = 'Bug Topic' WHERE topic_id = 13");
+		$repairer = $this->repairer();
+		$plan = iterator_to_array($repairer->preview_recovery())[0];
+		$this->db->sql_query('DELETE FROM phpbb_topic_prefixes_forums WHERE forum_id = 2 AND prefix_id = 1');
+
+		$result = $repairer->apply($plan);
+
+		self::assertSame(1, $result['conflicts']);
+		self::assertSame(0, (int) $this->field('phpbb_topic_prefixes_topics', 'COUNT(*)', 'topic_id = 13'));
+	}
+
 	/**
 	 * Fetch one scalar field from the fixture database.
 	 *

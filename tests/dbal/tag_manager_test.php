@@ -151,6 +151,14 @@ class tag_manager_test extends tags_base
 		self::assertSame('00703C', $selected[6]['prefix_color']);
 	}
 
+	public function test_search_lookups_reject_empty_identifiers_and_forums(): void
+	{
+		$manager = $this->create_tag_manager();
+
+		self::assertSame([], $manager->resolve_search_tags([0, 'invalid']));
+		self::assertSame([], $manager->get_search_catalog([0, 'invalid']));
+	}
+
 	public function test_deleted_forum_availability_is_removed()
 	{
 		$manager = $this->create_tag_manager();

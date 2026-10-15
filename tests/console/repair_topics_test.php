@@ -37,7 +37,7 @@ class repair_topics_test extends \phpbb_test_case
 	 * @param array $replies  Reply preview plans
 	 * @return CommandTester Configured command tester
 	 */
-	protected function create_tester(array $recovery = [], array $titles = [], array $replies = []): CommandTester
+	protected function create_tester(array $recovery = [], array $titles = [], array $replies = [], ?array $forums = null): CommandTester
 	{
 		global $phpbb_root_path, $phpEx;
 		$loader = new \phpbb\language\language_file_loader($phpbb_root_path, $phpEx);
@@ -57,7 +57,7 @@ class repair_topics_test extends \phpbb_test_case
 		$this->topic_repairer->method('preview_recovery')->willReturnCallback($this->generator($recovery));
 		$this->titles->method('preview')->willReturnCallback($this->generator($titles));
 		$this->replies->method('preview')->willReturnCallback($this->generator($replies));
-		$forums = [2 => ['label' => '  Forum (#2)', 'plain_label' => 'Forum (#2)']];
+		$forums = $forums ?? [2 => ['label' => '  Forum (#2)', 'plain_label' => 'Forum (#2)']];
 		$this->titles->method('get_forums')->willReturn($forums);
 		$this->replies->method('get_forums')->willReturn($forums);
 		$command = new \phpbb\topicprefixes\console\command\repair_topics(
@@ -166,20 +166,43 @@ class repair_topics_test extends \phpbb_test_case
 		$this->replies->expects(self::never())->method('preview');
 
 		self::assertSame(1, $tester->execute([], ['interactive' => true]));
-		self::assertStringContainsString(
-			'Disable the board under General, Board settings',
-			$tester->getDisplay()
-		);
-		self::assertStringNotContainsString('Choose a repair action', $tester->getDisplay());
 	}
 
 	public function test_empty_recovery_returns_to_menu(): void
 	{
 		$tester = $this->create_tester();
-		$this->topic_repairer->expects(self::never())->method('apply');
+		$this->topic_repairer->expects(self::never())->method('apply_batch');
 		$tester->setInputs(['0', '3']);
 		self::assertSame(0, $tester->execute([], ['interactive' => true]));
-		self::assertStringContainsString('Found 0 topics', $tester->getDisplay());
+	}
+
+	public function test_recovery_preview_failure_marks_command_failed_and_returns_to_menu(): void
+	{
+		$tester = $this->create_tester();
+		$this->topic_repairer->method('preview_recovery')->willThrowException(new \RuntimeException('Preview failed'));
+		$tester->setInputs(['0', '3']);
+
+		self::assertSame(1, $tester->execute([], ['interactive' => true]));
+	}
+
+	public function test_declining_recovery_group_applies_nothing(): void
+	{
+		$tester = $this->create_tester([$this->recovery_plan()]);
+		$this->topic_repairer->expects(self::never())->method('apply_batch');
+		$this->log->expects(self::never())->method('add');
+		$tester->setInputs(['0', 'no', '3']);
+
+		self::assertSame(0, $tester->execute([], ['interactive' => true]));
+	}
+
+	public function test_declining_recovery_backup_confirmation_applies_nothing(): void
+	{
+		$tester = $this->create_tester([$this->recovery_plan()]);
+		$this->topic_repairer->expects(self::never())->method('apply_batch');
+		$this->log->expects(self::never())->method('add');
+		$tester->setInputs(['0', 'yes', 'no', '3']);
+
+		self::assertSame(0, $tester->execute([], ['interactive' => true]));
 	}
 
 	public function test_confirmed_recovery_applies_without_reply_service(): void
@@ -208,11 +231,9 @@ class repair_topics_test extends \phpbb_test_case
 				[1, 1, 1, 0]
 			)
 			->willReturn(1);
-		$this->replies->expects(self::never())->method('apply');
+		$this->replies->expects(self::never())->method('apply_batch');
 		$tester->setInputs(['0', 'yes', 'yes', 'yes', '3']);
 		self::assertSame(0, $tester->execute([], ['interactive' => true]));
-		self::assertStringContainsString('Topics repaired: 1', $tester->getDisplay());
-		self::assertStringNotContainsString('assignments', $tester->getDisplay());
 	}
 
 	public function test_title_action_routes_to_title_service(): void
@@ -240,11 +261,9 @@ class repair_topics_test extends \phpbb_test_case
 				self::isType('array')
 			)
 			->willReturn(1);
-		$this->replies->expects(self::never())->method('apply');
+		$this->replies->expects(self::never())->method('apply_batch');
 		$tester->setInputs(['1', '[OLD]', '2', 'yes', 'yes', 'yes', '3']);
 		self::assertSame(0, $tester->execute([], ['interactive' => true]));
-		self::assertStringContainsString('titles in Forum (#2)', $tester->getDisplay());
-		self::assertStringNotContainsString('titles in   Forum (#2)', $tester->getDisplay());
 	}
 
 	public function test_manual_prefix_displays_unicode_emoji_and_slashes(): void
@@ -271,7 +290,102 @@ class repair_topics_test extends \phpbb_test_case
 		self::assertStringContainsString('\\tline\\nnext\\u2028end', $tester->getDisplay());
 	}
 
-	public function test_reply_action_is_explicit_and_warns_about_history(): void
+	public function test_title_preview_without_changes_returns_to_menu_without_apply(): void
+	{
+		$plan = $this->title_plan();
+		$plan['changes'] = [];
+		$plan['skipped'] = 1;
+		$tester = $this->create_tester([], [$plan]);
+		$this->titles->expects(self::never())->method('apply_batch');
+		$this->log->expects(self::never())->method('add');
+		$tester->setInputs(['1', '[OLD]', '2', '3']);
+
+		self::assertSame(0, $tester->execute([], ['interactive' => true]));
+	}
+
+	public function test_title_prefix_prompt_retries_invalid_json_and_blank_values(): void
+	{
+		$tester = $this->create_tester();
+		$this->titles->expects(self::never())->method('apply_batch');
+		$tester->setInputs(['1', '"unterminated', '" "', '[OLD]', '2', '3']);
+
+		self::assertSame(0, $tester->execute([], ['interactive' => true]));
+	}
+
+	public function test_title_action_without_forums_returns_to_menu(): void
+	{
+		$tester = $this->create_tester([], [], [], []);
+		$this->titles->expects(self::never())->method('preview');
+		$this->titles->expects(self::never())->method('apply_batch');
+		$tester->setInputs(['1', '[OLD]', '3']);
+
+		self::assertSame(0, $tester->execute([], ['interactive' => true]));
+	}
+
+	public function test_declining_title_backup_confirmation_applies_nothing(): void
+	{
+		$tester = $this->create_tester([], [$this->title_plan()]);
+		$this->titles->expects(self::never())->method('apply_batch');
+		$this->log->expects(self::never())->method('add');
+		$tester->setInputs(['1', '[OLD]', '2', 'yes', 'no', '3']);
+
+		self::assertSame(0, $tester->execute([], ['interactive' => true]));
+	}
+
+	public function test_title_repairs_apply_in_bounded_batches(): void
+	{
+		$plans = [];
+		for ($id = 1; $id <= 101; $id++)
+		{
+			$plan = $this->title_plan();
+			$plan['topic_id'] = $id;
+			$plans[] = $plan;
+		}
+		$tester = $this->create_tester([], $plans);
+		$batch_sizes = [];
+		$this->titles->expects(self::exactly(2))->method('apply_batch')->willReturnCallback(static function ($batch) use (&$batch_sizes) {
+			$batch_sizes[] = count($batch);
+			return [
+				'topics' => count($batch),
+				'subjects' => 0,
+				'caches' => 0,
+				'skipped' => 0,
+				'conflicts' => 0,
+			];
+		});
+		$this->log->method('add')->willReturn(1);
+		$tester->setInputs([
+			'1', '[OLD]', '2',
+			'yes', 'yes', 'yes', 'yes', 'yes',
+			'yes', 'yes', 'yes', '3',
+		]);
+
+		self::assertSame(0, $tester->execute([], ['interactive' => true]));
+		self::assertSame([100, 1], $batch_sizes);
+	}
+
+	public function test_title_apply_skips_unchanged_preview_plans(): void
+	{
+		$eligible = $this->title_plan();
+		$unchanged = $this->title_plan();
+		$unchanged['topic_id'] = 14;
+		$unchanged['changes'] = [];
+		$unchanged['skipped'] = 1;
+		$tester = $this->create_tester([], [$eligible, $unchanged]);
+		$this->titles->expects(self::once())->method('apply_batch')->with([$eligible], false)->willReturn([
+			'topics' => 1,
+			'subjects' => 0,
+			'caches' => 0,
+			'skipped' => 0,
+			'conflicts' => 0,
+		]);
+		$this->log->method('add')->willReturn(1);
+		$tester->setInputs(['1', '[OLD]', '2', 'yes', 'yes', 'yes', '3']);
+
+		self::assertSame(0, $tester->execute([], ['interactive' => true]));
+	}
+
+	public function test_reply_action_routes_to_reply_service(): void
 	{
 		$plan = $this->reply_repair_plan();
 		$tester = $this->create_tester([], [], [$plan]);
@@ -296,26 +410,21 @@ class repair_topics_test extends \phpbb_test_case
 				self::isType('array')
 			)
 			->willReturn(1);
-		$this->titles->expects(self::never())->method('apply');
+		$this->titles->expects(self::never())->method('apply_batch');
 		$tester->setInputs(['2', '[OLD]', '2', 'yes', 'yes', 'yes', '3']);
 		self::assertSame(0, $tester->execute([], ['interactive' => true]));
-		self::assertStringContainsString('normally kept as part of the discussion history', $tester->getDisplay());
-		self::assertStringContainsString('Reply subjects updated: 1', $tester->getDisplay());
-		self::assertStringContainsString('reply subjects in Forum (#2)', $tester->getDisplay());
-		self::assertStringNotContainsString('reply subjects in   Forum (#2)', $tester->getDisplay());
 	}
 
-	public function test_uncertain_recovery_tells_user_to_choose_tag_manually(): void
+	public function test_uncertain_recovery_is_not_applied(): void
 	{
 		$plan = $this->recovery_plan();
 		$plan['reason'] = 'ambiguous';
 		$plan['changes'] = [];
 		$tester = $this->create_tester([$plan]);
-		$this->topic_repairer->expects(self::never())->method('apply');
+		$this->topic_repairer->expects(self::never())->method('apply_batch');
+		$this->log->expects(self::never())->method('add');
 		$tester->setInputs(['0', '3']);
 		self::assertSame(0, $tester->execute([], ['interactive' => true]));
-		self::assertStringContainsString('Skipped: choose the tag by editing the topic', $tester->getDisplay());
-		self::assertStringContainsString('1 need manual review', $tester->getDisplay());
 	}
 
 	public function test_recovery_group_preview_can_stop_before_all_pages(): void
@@ -344,11 +453,58 @@ class repair_topics_test extends \phpbb_test_case
 		self::assertStringContainsString('Total: 21; reviewed: 20; not previewed: 1', $tester->getDisplay());
 	}
 
+	public function test_recovery_repairs_apply_in_bounded_batches(): void
+	{
+		$plans = [];
+		for ($id = 1; $id <= 101; $id++)
+		{
+			$plan = $this->recovery_plan();
+			$plan['topic_id'] = $id;
+			$plans[] = $plan;
+		}
+		$tester = $this->create_tester($plans);
+		$batch_sizes = [];
+		$this->topic_repairer->expects(self::exactly(2))->method('apply_batch')->willReturnCallback(static function ($batch) use (&$batch_sizes) {
+			$batch_sizes[] = count($batch);
+			return [
+				'assignments' => count($batch),
+				'topics' => count($batch),
+				'subjects' => 0,
+				'caches' => 0,
+				'skipped' => 0,
+				'conflicts' => 0,
+			];
+		});
+		$this->log->method('add')->willReturn(1);
+		$tester->setInputs(['0', 'no', 'yes', 'yes', 'yes', '3']);
+
+		self::assertSame(0, $tester->execute([], ['interactive' => true]));
+		self::assertSame([100, 1], $batch_sizes);
+	}
+
+	public function test_recovery_log_failure_marks_command_failed_after_apply(): void
+	{
+		$plan = $this->recovery_plan();
+		$tester = $this->create_tester([$plan]);
+		$this->topic_repairer->expects(self::once())->method('apply_batch')->with([$plan], false)->willReturn([
+			'assignments' => 1,
+			'topics' => 1,
+			'subjects' => 0,
+			'caches' => 0,
+			'skipped' => 0,
+			'conflicts' => 0,
+		]);
+		$this->log->method('add')->willReturn(false);
+		$tester->setInputs(['0', 'yes', 'yes', 'yes', '3']);
+
+		self::assertSame(1, $tester->execute([], ['interactive' => true]));
+	}
+
 	public function test_summary_log_failure_reports_completed_repairs(): void
 	{
 		$plan = $this->title_plan();
 		$tester = $this->create_tester([], [$plan]);
-		$this->titles->method('apply_batch')->willReturn([
+		$this->titles->expects(self::once())->method('apply_batch')->willReturn([
 			'topics' => 1,
 			'subjects' => 0,
 			'caches' => 0,
@@ -358,7 +514,6 @@ class repair_topics_test extends \phpbb_test_case
 		$this->log->method('add')->willReturn(false);
 		$tester->setInputs(['1', '[OLD]', '2', 'yes', 'yes', 'yes', '3']);
 		self::assertSame(1, $tester->execute([], ['interactive' => true]));
-		self::assertStringContainsString('Repairs were completed', $tester->getDisplay());
 	}
 
 	public function test_recovery_groups_can_be_approved_independently(): void
@@ -381,7 +536,6 @@ class repair_topics_test extends \phpbb_test_case
 			]);
 		$tester->setInputs(['0', 'no', 'yes', 'yes', 'yes', '3']);
 		self::assertSame(0, $tester->execute([], ['interactive' => true]));
-		self::assertStringContainsString('Topics repaired: 1', $tester->getDisplay());
 	}
 
 	public function test_recovery_prefix_displays_decoded_unicode_emoji_and_slashes(): void

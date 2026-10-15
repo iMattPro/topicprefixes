@@ -32,7 +32,16 @@ class filter_test extends tags_base
 			return $see_hidden ? '1=1' : $alias . 'topic_visibility = ' . ITEM_APPROVED;
 		});
 		$visibility->method('get_global_visibility_sql')->willReturnCallback(static function ($mode, $forum_ids, $alias) use ($see_hidden) {
-			return $see_hidden ? '1=1' : $alias . 'topic_visibility = ' . ITEM_APPROVED;
+			$conditions = [];
+			if ($forum_ids)
+			{
+				$conditions[] = $alias . 'forum_id NOT IN (' . implode(', ', array_map('intval', $forum_ids)) . ')';
+			}
+			if (!$see_hidden)
+			{
+				$conditions[] = $alias . 'topic_visibility = ' . ITEM_APPROVED;
+			}
+			return $conditions ? implode(' AND ', $conditions) : '1=1';
 		});
 		$auth = $this->getMockBuilder('\phpbb\auth\auth')->disableOriginalConstructor()->getMock();
 		$auth->method('acl_getf')->willReturnCallback(static function ($permission) use ($readable_forums, $listable_forums) {
@@ -48,8 +57,6 @@ class filter_test extends tags_base
 	 */
 	public function test_single_tag_filter()
 	{
-		$filter = $this->create_filter();
-		self::assertStringNotContainsString('GROUP BY', $filter->condition('t', [1]));
 		self::assertSame(array(10, 11), $this->query_ids(array(1)));
 	}
 
@@ -58,30 +65,28 @@ class filter_test extends tags_base
 	 */
 	public function test_multiple_tags_use_and_semantics_without_duplicates()
 	{
-		self::assertSame(2, substr_count($this->create_filter()->condition('t', [1, 2]), 'EXISTS ('));
-		self::assertSame(array(10), $this->query_ids(array(1, 2)));
+		self::assertSame(array(10), $this->query_ids(array(1, 2, 1, 0)));
 	}
 
 	public function test_topic_id_expression_condition_uses_and_semantics(): void
 	{
-		$condition = $this->create_filter()->topic_id_condition('p.topic_id', [1, 2]);
-
-		self::assertSame(2, substr_count($condition, 'EXISTS ('));
-		self::assertSame(2, substr_count($condition, 'tpf.topic_id = p.topic_id'));
-		self::assertStringContainsString('tpf.prefix_id = 1', $condition);
-		self::assertStringContainsString('tpf.prefix_id = 2', $condition);
+		self::assertSame(
+			[10],
+			$this->query_ids_with_condition($this->create_filter()->topic_id_condition('p.topic_id', [1, 2]), 'p')
+		);
 	}
 
 	public function test_tag_conditions_support_all_and_any(): void
 	{
 		$filter = $this->create_filter();
-		$all = $filter->topic_id_tags_condition('t.topic_id', [1, 2], 'all');
-		$any = $filter->topic_id_tags_condition('t.topic_id', [1, 2], 'any');
-
-		self::assertSame(2, substr_count($all, 'EXISTS ('));
-		self::assertSame(1, substr_count($any, 'EXISTS ('));
-		self::assertStringContainsString('tpf.topic_id = t.topic_id', $any);
-		self::assertStringContainsString('tpf.prefix_id IN', $any);
+		self::assertSame(
+			[10],
+			$this->query_ids_with_condition($filter->topic_id_tags_condition('t.topic_id', [1, 2], 'all'))
+		);
+		self::assertSame(
+			[10, 11, 12],
+			$this->query_ids_with_condition($filter->topic_id_tags_condition('t.topic_id', [1, 2, 2, 0], 'any'))
+		);
 	}
 
 	public function test_tag_only_search_returns_paginated_topic_ids(): void
@@ -96,6 +101,50 @@ class filter_test extends tags_base
 		list($ids, $total) = $filter->search_topic_ids([1, 2], 'any', [], 't', 'd', 0, 0, 2);
 		self::assertSame([10, 11], $ids);
 		self::assertSame(3, $total);
+
+		list($ids, $total, $start) = $filter->search_topic_ids([1, 2], 'any', [], 'i', 'a', 0, 99, 2);
+		self::assertSame([12], $ids);
+		self::assertSame(3, $total);
+		self::assertSame(2, $start);
+	}
+
+	/**
+	 * @dataProvider search_sort_data
+	 */
+	public function test_tag_only_search_honors_sort_inputs(string $sort_key, string $sort_dir, array $expected): void
+	{
+		$this->db->sql_query("UPDATE phpbb_topics SET topic_title = 'Zulu', topic_last_post_time = 100 WHERE topic_id = 10");
+		$this->db->sql_query("UPDATE phpbb_topics SET topic_title = 'Alpha', topic_last_post_time = 300 WHERE topic_id = 11");
+		$this->db->sql_query("UPDATE phpbb_topics SET topic_title = 'Middle', topic_last_post_time = 200, forum_id = 3 WHERE topic_id = 12");
+
+		list($ids) = $this->create_filter()->search_topic_ids([1, 2], 'any', [], $sort_key, $sort_dir, 0, 0, 25);
+
+		self::assertSame($expected, $ids);
+	}
+
+	public function search_sort_data(): array
+	{
+		return [
+			'author ascending with unknown users' => ['a', 'a', [10, 11, 12]],
+			'forum descending' => ['f', 'd', [12, 10, 11]],
+			'title ascending' => ['i', 'a', [11, 12, 10]],
+			'subject uses title descending' => ['s', 'd', [10, 12, 11]],
+			'default uses last post descending' => ['t', 'd', [11, 12, 10]],
+		];
+	}
+
+	public function test_tag_only_search_applies_visibility_forum_and_age_filters(): void
+	{
+		$this->db->sql_query('UPDATE phpbb_topics SET topic_visibility = ' . ITEM_UNAPPROVED . ' WHERE topic_id = 11');
+		$this->db->sql_query('UPDATE phpbb_topics SET forum_id = 3 WHERE topic_id = 12');
+		$this->db->sql_query('UPDATE phpbb_topics SET topic_last_post_time = 1 WHERE topic_id = 10');
+
+		list($ids, $total, $start) = $this->create_filter([2, 3], [2, 3], false)
+			->search_topic_ids([1, 2], 'any', [3], 't', 'd', 7, -5, 0);
+
+		self::assertSame([], $ids);
+		self::assertSame(0, $total);
+		self::assertSame(0, $start);
 	}
 
 	/**
@@ -114,7 +163,11 @@ class filter_test extends tags_base
 	{
 		$filter = $this->create_filter();
 
-		self::assertSame('1=1', $filter->condition('t', [0, 0]));
+		self::assertSame([10, 11, 12, 13], $this->query_ids([0, 0]));
+		self::assertSame(
+			[10, 11, 12, 13],
+			$this->query_ids_with_condition($filter->topic_id_tags_condition('t.topic_id', [0], 'any'))
+		);
 		self::assertSame(2, $filter->count_topics(2, [1], 7));
 		self::assertSame([], $filter->get_visible_tag_ids_for_forum(2, [0, 'invalid']));
 	}
@@ -141,6 +194,7 @@ class filter_test extends tags_base
 		]));
 
 		self::assertSame([], $this->create_filter([2], [2], false)->get_visible_tag_ids_for_forum(2, [4]));
+		self::assertSame([], $this->create_filter([], [], false)->get_visible_tag_ids_for_forum(2, [4]));
 		self::assertSame([4], $this->create_filter([2, 3], [2, 3], false)->get_visible_tag_ids_for_forum(2, [4]));
 	}
 
@@ -169,6 +223,7 @@ class filter_test extends tags_base
 
 		self::assertSame([], $this->create_filter([2], [2], false)->get_visible_tag_ids_for_forum(2, [4]));
 		self::assertSame([], $this->create_filter([2, 3], [2], false)->get_visible_tag_ids_for_forum(2, [4]));
+		self::assertSame([], $this->create_filter([2, 3], [], false)->get_visible_tag_ids_for_forum(2, [4]));
 		self::assertSame([4], $this->create_filter([2, 3], [2, 3], false)->get_visible_tag_ids_for_forum(2, [4]));
 
 		$this->db->sql_query('UPDATE phpbb_topics
@@ -188,6 +243,7 @@ class filter_test extends tags_base
 
 		self::assertSame([10 => 10], $this->create_filter([2], [2], false)->get_visible_topic_map([10, 13]));
 		self::assertSame([10 => 10], $this->create_filter([2, 3], [2], false)->get_visible_topic_map([10, 13]));
+		self::assertSame([10 => 10], $this->create_filter([2, 3], [], false)->get_visible_topic_map([10, 13]));
 		self::assertSame([10 => 10, 13 => 12], $this->create_filter([2, 3], [2, 3], false)->get_visible_topic_map([10, 13]));
 
 		$this->db->sql_query('UPDATE phpbb_topics SET topic_visibility = ' . ITEM_UNAPPROVED . ' WHERE topic_id = 12');
@@ -206,7 +262,21 @@ class filter_test extends tags_base
 	 */
 	protected function query_ids(array $tag_ids)
 	{
-		$sql = 'SELECT t.topic_id FROM phpbb_topics t WHERE t.forum_id = 2 AND ' . $this->create_filter()->condition('t', $tag_ids) . ' ORDER BY t.topic_id';
+		return $this->query_ids_with_condition($this->create_filter()->condition('t', $tag_ids));
+	}
+
+	/**
+	 * Execute a generated topic condition and return matching identifiers.
+	 *
+	 * @param string $condition SQL condition under test
+	 * @param string $alias     Topic table alias used by condition
+	 * @return array Topic identifiers
+	 */
+	protected function query_ids_with_condition(string $condition, string $alias = 't'): array
+	{
+		$sql = 'SELECT ' . $alias . '.topic_id FROM phpbb_topics ' . $alias . '
+			WHERE ' . $alias . '.forum_id = 2 AND ' . $condition . '
+			ORDER BY ' . $alias . '.topic_id';
 		$result = $this->db->sql_query($sql);
 		$ids = array_map('intval', array_column($this->db->sql_fetchrowset($result), 'topic_id'));
 		$this->db->sql_freeresult($result);

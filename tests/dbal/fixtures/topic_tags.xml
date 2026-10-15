@@ -18,11 +18,11 @@
 		<row><value>3</value><value>1</value></row><row><value>3</value><value>4</value></row>
 	</table>
 	<table name="phpbb_topics">
-		<column>topic_id</column><column>forum_id</column><column>topic_title</column><column>topic_visibility</column><column>topic_type</column><column>topic_last_post_time</column>
-		<row><value>10</value><value>2</value><value>Both tags</value><value>1</value><value>0</value><value>2000000000</value></row>
-		<row><value>11</value><value>2</value><value>Bug only</value><value>1</value><value>0</value><value>2000000000</value></row>
-		<row><value>12</value><value>2</value><value>PHP only</value><value>1</value><value>0</value><value>2000000000</value></row>
-		<row><value>13</value><value>2</value><value>No tags</value><value>1</value><value>0</value><value>2000000000</value></row>
+		<column>topic_id</column><column>forum_id</column><column>topic_title</column><column>topic_visibility</column><column>topic_type</column><column>topic_last_post_time</column><column>topic_poster</column>
+		<row><value>10</value><value>2</value><value>Both tags</value><value>1</value><value>0</value><value>2000000000</value><value>2</value></row>
+		<row><value>11</value><value>2</value><value>Bug only</value><value>1</value><value>0</value><value>2000000000</value><value>3</value></row>
+		<row><value>12</value><value>2</value><value>PHP only</value><value>1</value><value>0</value><value>2000000000</value><value>2</value></row>
+		<row><value>13</value><value>2</value><value>No tags</value><value>1</value><value>0</value><value>2000000000</value><value>3</value></row>
 	</table>
 	<table name="phpbb_topic_prefixes_topics">
 		<column>topic_id</column><column>prefix_id</column>

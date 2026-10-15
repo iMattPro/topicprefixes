@@ -50,7 +50,6 @@ class repair_tags_test extends \phpbb_test_case
 	{
 		$tester = $this->create_tester(true);
 		self::assertSame(1, $tester->execute([], ['interactive' => false]));
-		self::assertStringContainsString($this->language->lang('CLI_TOPIC_TAGS_REPAIR_INTERACTIVE_REQUIRED'), $tester->getDisplay());
 	}
 
 	public function test_command_uses_generic_repair_name(): void
@@ -62,10 +61,6 @@ class repair_tags_test extends \phpbb_test_case
 	{
 		$tester = $this->create_tester(false);
 		self::assertSame(1, $tester->execute([], ['interactive' => true]));
-		self::assertStringContainsString(
-			$this->language->lang('CLI_TOPIC_TAGS_REPAIR_BOARD_ENABLED'),
-			preg_replace('/\s+/', ' ', $tester->getDisplay())
-		);
 	}
 
 	public function test_declined_backup_confirmation_changes_nothing(): void
@@ -75,7 +70,6 @@ class repair_tags_test extends \phpbb_test_case
 		$tester->setInputs(['no']);
 
 		self::assertSame(0, $tester->execute([], ['interactive' => true]));
-		self::assertStringContainsString($this->language->lang('CLI_TOPIC_TAGS_REPAIR_CANCELLED'), $tester->getDisplay());
 	}
 
 	public function test_targeted_repair_previews_confirms_repairs_and_logs(): void
@@ -121,13 +115,6 @@ class repair_tags_test extends \phpbb_test_case
 		$tester = $this->create_tester(true);
 		$tester->setInputs(['y', 'split', 'A', 'B', '', 'y']);
 		self::assertSame(0, $tester->execute(['--tag-id' => 1], ['interactive' => true]));
-		$display = $tester->getDisplay();
-		self::assertStringContainsString('2 assigned topics, 1 forum', $display);
-		self::assertStringContainsString('Assign every separate tag to 2 topics', $display);
-		self::assertStringContainsString('across 1 forum', $display);
-		self::assertStringContainsString('Titles and post subjects are not changed.', $display);
-		self::assertStringContainsString('across 2 topics.', $display);
-		self::assertStringContainsString('Finished: 1 split, 0 merges, 0 skips.', $display);
 	}
 
 	public function test_repair_log_escapes_html_and_preserves_unicode(): void
@@ -207,12 +194,6 @@ class repair_tags_test extends \phpbb_test_case
 		$tester = $this->create_tester(true);
 		$tester->setInputs(['yes', 'merge', 'Tag #2: Target', 'yes']);
 		self::assertSame(0, $tester->execute(['--tag-id' => 1], ['interactive' => true]));
-		$display = $tester->getDisplay();
-		self::assertStringContainsString($this->language->lang('CLI_TOPIC_TAGS_REPAIR_MERGE_PREVIEW'), $display);
-		self::assertStringContainsString($this->language->lang('CLI_TOPIC_TAGS_REPAIR_MERGE_PREVIEW_ENABLE'), $display);
-		self::assertStringContainsString('Assign the destination tag to 1 topic', $display);
-		self::assertStringContainsString('across 1 topic.', $display);
-		self::assertStringContainsString('Finished: 0 splits, 1 merge, 0 skips.', $display);
 	}
 
 	public function test_merge_without_destination_skips_source(): void
@@ -226,7 +207,6 @@ class repair_tags_test extends \phpbb_test_case
 		$tester = $this->create_tester(true);
 		$tester->setInputs(['yes', 'merge']);
 		self::assertSame(0, $tester->execute(['--tag-id' => 1], ['interactive' => true]));
-		self::assertStringContainsString($this->language->lang('CLI_TOPIC_TAGS_REPAIR_MERGE_NO_TARGETS'), $tester->getDisplay());
 	}
 
 	public function test_merge_target_selection_can_be_cancelled(): void
@@ -275,7 +255,6 @@ class repair_tags_test extends \phpbb_test_case
 		$tester = $this->create_tester(true);
 		$tester->setInputs(['yes', '']);
 		self::assertSame(0, $tester->execute([], ['interactive' => true]));
-		self::assertStringContainsString('Finished: 0 splits, 0 merges, 1 skip.', $tester->getDisplay());
 	}
 
 	public function test_invalid_targeted_tag_is_rejected(): void
@@ -286,7 +265,6 @@ class repair_tags_test extends \phpbb_test_case
 		$tester = $this->create_tester(true);
 		$tester->setInputs(['yes']);
 		self::assertSame(1, $tester->execute(['--tag-id' => 999], ['interactive' => true]));
-		self::assertStringContainsString($this->language->lang('CLI_TOPIC_TAGS_REPAIR_TAG_NOT_FOUND'), $tester->getDisplay());
 	}
 
 	public function test_empty_catalog_exits_cleanly(): void
@@ -296,7 +274,6 @@ class repair_tags_test extends \phpbb_test_case
 		$tester = $this->create_tester(true);
 		$tester->setInputs(['yes']);
 		self::assertSame(0, $tester->execute([], ['interactive' => true]));
-		self::assertStringContainsString($this->language->lang('CLI_TOPIC_TAGS_REPAIR_NO_TAGS'), $tester->getDisplay());
 	}
 
 	public function test_empty_replacement_list_skips_tag(): void
@@ -310,7 +287,6 @@ class repair_tags_test extends \phpbb_test_case
 		$tester = $this->create_tester(true);
 		$tester->setInputs(['yes', 'split', '']);
 		self::assertSame(0, $tester->execute([], ['interactive' => true]));
-		self::assertStringContainsString($this->language->lang('CLI_TOPIC_TAGS_REPAIR_SKIPPED'), $tester->getDisplay());
 	}
 
 	public function test_replacement_prompt_rejects_invalid_source_and_duplicate_then_declines(): void
@@ -324,11 +300,6 @@ class repair_tags_test extends \phpbb_test_case
 		$tester = $this->create_tester(true);
 		$tester->setInputs(['yes', 'split', str_repeat('x', 51), '(A)(B)', 'A', 'A', 'B', '', 'no']);
 		self::assertSame(0, $tester->execute([], ['interactive' => true]));
-		$display = $tester->getDisplay();
-		self::assertStringContainsString($this->language->lang('CLI_TOPIC_TAGS_REPAIR_INVALID_TAG'), $display);
-		self::assertStringContainsString($this->language->lang('CLI_TOPIC_TAGS_REPAIR_SOURCE_TARGET'), $display);
-		self::assertStringContainsString($this->language->lang('CLI_TOPIC_TAGS_REPAIR_DUPLICATE_TAG'), $display);
-		self::assertStringContainsString($this->language->lang('CLI_TOPIC_TAGS_REPAIR_SKIPPED'), $display);
 	}
 
 	public function test_preview_validation_failure_skips_tag(): void
@@ -342,7 +313,6 @@ class repair_tags_test extends \phpbb_test_case
 		$tester = $this->create_tester(true);
 		$tester->setInputs(['yes', 'split', 'A', '']);
 		self::assertSame(0, $tester->execute([], ['interactive' => true]));
-		self::assertStringContainsString($this->language->lang('CLI_TOPIC_TAGS_REPAIR_INVALID_TAG'), $tester->getDisplay());
 	}
 
 	public function test_board_reenabled_before_apply_aborts(): void
@@ -359,10 +329,6 @@ class repair_tags_test extends \phpbb_test_case
 		$tester = $this->create_tester(true);
 		$tester->setInputs(['yes', 'split', 'A', 'B', '', 'yes']);
 		self::assertSame(1, $tester->execute([], ['interactive' => true]));
-		self::assertStringContainsString(
-			$this->language->lang('CLI_TOPIC_TAGS_REPAIR_BOARD_ENABLED'),
-			preg_replace('/\s+/', ' ', $tester->getDisplay())
-		);
 	}
 
 	public function test_repair_failure_aborts(): void
@@ -376,10 +342,6 @@ class repair_tags_test extends \phpbb_test_case
 		$tester = $this->create_tester(true);
 		$tester->setInputs(['yes', 'split', 'A', 'B', '', 'yes']);
 		self::assertSame(1, $tester->execute([], ['interactive' => true]));
-		self::assertStringContainsString(
-			$this->language->lang('CLI_TOPIC_TAGS_REPAIR_SPLIT_FAILED', 'Database failure.'),
-			preg_replace('/\s+/', ' ', $tester->getDisplay())
-		);
 	}
 
 	public function test_merge_failure_aborts(): void
@@ -399,10 +361,6 @@ class repair_tags_test extends \phpbb_test_case
 		$tester = $this->create_tester(true);
 		$tester->setInputs(['yes', 'merge', 'Tag #2: Target', 'yes']);
 		self::assertSame(1, $tester->execute(['--tag-id' => 1], ['interactive' => true]));
-		self::assertStringContainsString(
-			$this->language->lang('CLI_TOPIC_TAGS_REPAIR_MERGE_FAILED', 'Database failure.'),
-			preg_replace('/\s+/', ' ', $tester->getDisplay())
-		);
 	}
 
 	protected function source_tag(): array

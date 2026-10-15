@@ -19,6 +19,17 @@ require_once __DIR__ . '/tags_base.php';
  */
 class reply_repairer_test extends tags_base
 {
+	public function test_empty_batch_changes_nothing(): void
+	{
+		self::assertSame([
+			'topics' => 0,
+			'subjects' => 0,
+			'caches' => 0,
+			'skipped' => 0,
+			'conflicts' => 0,
+		], $this->create_repairer()->apply_batch([]));
+	}
+
 	/**
 	 * Create the reply repair service using the fixture database.
 	 *

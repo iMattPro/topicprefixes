@@ -47,11 +47,13 @@ class renderer_test extends \phpbb_test_case
 			'sd' => 'd',
 		]);
 
-		self::assertStringContainsString('f=2', $url);
-		self::assertStringContainsString('st=7', $url);
-		self::assertStringContainsString('sk=t', $url);
-		self::assertStringContainsString('sd=d', $url);
-		self::assertStringContainsString('tags=1%2C3', $url);
+		self::assertSame([
+			'f' => '2',
+			'st' => '7',
+			'sk' => 't',
+			'sd' => 'd',
+			'tags' => '1,3',
+		], $this->url_params($url));
 	}
 
 	/**
@@ -70,7 +72,7 @@ class renderer_test extends \phpbb_test_case
 
 		self::assertTrue($rendered[0]['S_SELECTED']);
 		self::assertFalse($rendered[0]['S_RETAINED']);
-		self::assertStringContainsString('tags=2', $rendered[0]['U_FILTER']);
+		self::assertSame('2', $this->url_params($rendered[0]['U_FILTER'])['tags']);
 		self::assertSame('#FFFFFF', $rendered[0]['TAG_TEXT_COLOR']);
 	}
 
@@ -181,5 +183,15 @@ class renderer_test extends \phpbb_test_case
 		$manager->method('get_available_tags')->willReturn($available);
 
 		return new \phpbb\topicprefixes\tags\renderer($manager, './', 'php');
+	}
+
+	/**
+	 * Parse an HTML-safe generated URL into semantic query parameters.
+	 */
+	protected function url_params(string $url): array
+	{
+		$query = parse_url(html_entity_decode($url), PHP_URL_QUERY);
+		parse_str((string) $query, $params);
+		return $params;
 	}
 }

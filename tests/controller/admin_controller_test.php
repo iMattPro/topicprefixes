@@ -19,6 +19,7 @@ class admin_controller_test extends \phpbb_test_case
 	public static $confirmed = false;
 	public static $triggered_message;
 	public static $throw_on_trigger = false;
+	public static $forum_rows = array();
 
 	protected $manager;
 	protected $renderer;
@@ -49,6 +50,7 @@ class admin_controller_test extends \phpbb_test_case
 		self::$confirmed = false;
 		self::$triggered_message = null;
 		self::$throw_on_trigger = false;
+		self::$forum_rows = array();
 		$user = $this->user;
 		$this->controller = new admin_controller(
 			$this->manager, $this->renderer, $this->language, $this->log, $this->request, $this->template, $this->user
@@ -79,6 +81,47 @@ class admin_controller_test extends \phpbb_test_case
 		$this->controller->display_settings();
 	}
 
+	public function test_display_settings_maps_forum_rows_to_template_behavior(): void
+	{
+		self::$forum_rows = array(
+			array(
+				'forum_id' => 2,
+				'forum_name' => 'Parent &amp; Forum',
+				'padding' => '',
+				'forum_type' => FORUM_CAT,
+				'disabled' => true,
+				'selected' => false,
+			),
+			array(
+				'forum_id' => 3,
+				'forum_name' => 'Child &#128512;',
+				'padding' => '&nbsp; &nbsp;',
+				'forum_type' => FORUM_POST,
+				'disabled' => false,
+				'selected' => true,
+			),
+		);
+		$this->manager->method('get_forum_names_by_tag')->willReturn(array());
+		$this->manager->method('get_tags')->willReturn(array());
+		$this->template->expects(self::exactly(2))->method('assign_block_vars')->withConsecutive(
+			['forums', self::callback(static function ($row) {
+				return $row['FORUM_ID'] === 2
+					&& $row['FORUM_NAME'] === 'Parent &amp; Forum'
+					&& !$row['S_POSTABLE']
+					&& !$row['S_SELECTED'];
+			})],
+			['forums', self::callback(static function ($row) {
+				return $row['FORUM_ID'] === 3
+					&& $row['FORUM_NAME'] === 'Child 😀'
+					&& $row['DEPTH'] === 1
+					&& $row['S_POSTABLE']
+					&& $row['S_SELECTED'];
+			})]
+		);
+
+		$this->controller->display_settings();
+	}
+
 	public function test_toggle_updates_enabled_state()
 	{
 		$this->request->method('variable')->willReturn('valid');
@@ -95,9 +138,15 @@ class admin_controller_test extends \phpbb_test_case
 		$this->manager->expects(self::once())->method('get_tag')->with(1)->willReturn(array('prefix_enabled' => 1));
 		$this->manager->expects(self::once())->method('set_enabled')->with(1, false)->willReturn(true);
 
-		self::assertSame('{"success":true,"message":"TOPIC_TAG_DISABLED_NOTICE","tag_id":1,"enabled":false}', $this->capture_json_response(function () {
+		$response = json_decode($this->capture_json_response(function () {
 			$this->controller->toggle_tag(1);
-		}));
+		}), true);
+		self::assertSame([
+			'success' => true,
+			'message' => 'TOPIC_TAG_DISABLED_NOTICE',
+			'tag_id' => 1,
+			'enabled' => false,
+		], $response);
 	}
 
 	public function test_ajax_post_toggle_sets_explicit_state(): void
@@ -110,9 +159,15 @@ class admin_controller_test extends \phpbb_test_case
 		$this->manager->expects(self::once())->method('get_tag')->with(1)->willReturn(array('prefix_enabled' => 0));
 		$this->manager->expects(self::once())->method('set_enabled')->with(1, true)->willReturn(true);
 
-		self::assertSame('{"success":true,"message":"TOPIC_TAG_ENABLED_NOTICE","tag_id":1,"enabled":true}', $this->capture_json_response(function () {
+		$response = json_decode($this->capture_json_response(function () {
 			$this->controller->toggle_tag(1);
-		}));
+		}), true);
+		self::assertSame([
+			'success' => true,
+			'message' => 'TOPIC_TAG_ENABLED_NOTICE',
+			'tag_id' => 1,
+			'enabled' => true,
+		], $response);
 	}
 
 	public function test_ajax_reorder_saves_complete_order(): void
@@ -123,9 +178,11 @@ class admin_controller_test extends \phpbb_test_case
 		});
 		$this->manager->expects(self::once())->method('reorder_tags')->with(array(3, 1, 2))->willReturn(true);
 
-		self::assertSame('{"success":true,"message":"TOPIC_TAG_ORDER_SAVED","order":[3,1,2]}', $this->capture_json_response(function () {
+		$response = json_decode($this->capture_json_response(function () {
 			$this->controller->reorder_tags();
-		}));
+		}), true);
+		self::assertSame(true, $response['success']);
+		self::assertSame(array(3, 1, 2), $response['order']);
 	}
 
 	public function test_ajax_reorder_rejects_stale_order(): void
@@ -158,9 +215,10 @@ class admin_controller_test extends \phpbb_test_case
 		$this->request->method('is_ajax')->willReturn(true);
 		$this->manager->expects(self::once())->method('move_tag')->with(2, 'down')->willReturn(true);
 
-		self::assertSame('{"success":true}', $this->capture_json_response(function () {
+		$response = json_decode($this->capture_json_response(function () {
 			$this->controller->move_tag(2, 'down');
-		}));
+		}), true);
+		self::assertTrue($response['success']);
 	}
 
 	public function test_delete_requires_confirmation()
@@ -302,7 +360,9 @@ class admin_controller_test extends \phpbb_test_case
 		self::assertSame(9, $response['tag']['id']);
 		self::assertSame(array(2, 3), $response['tag']['forum_ids']);
 		self::assertSame(array('Forum 😀 & More', 'Forum Three'), $response['tag']['forum_names']);
-		self::assertStringContainsString('action=delete&tag_id=9', $response['tag']['urls']['delete']);
+		parse_str(parse_url(html_entity_decode($response['tag']['urls']['delete']), PHP_URL_QUERY), $delete_params);
+		self::assertSame('delete', $delete_params['action']);
+		self::assertSame('9', $delete_params['tag_id']);
 	}
 
 	public function test_ajax_save_validation_returns_field_error(): void
@@ -432,6 +492,40 @@ class admin_controller_test extends \phpbb_test_case
 			->getMock();
 		$controller->expects(self::once())->method($method)->with(...$arguments);
 		$controller->expects(self::once())->method('display_settings')->with(false);
+
+		$controller->main();
+	}
+
+	public function ajax_main_action_data(): array
+	{
+		return array(
+			array('save', 'save_tag', array(2)),
+			array('delete', 'delete_tag', array(2)),
+			array('toggle', 'toggle_tag', array(2)),
+			array('reorder', 'reorder_tags', array()),
+		);
+	}
+
+	/**
+	 * AJAX actions must not continue into page rendering after their handler.
+	 *
+	 * @dataProvider ajax_main_action_data
+	 */
+	public function test_main_ajax_actions_do_not_render_settings(string $action, string $method, array $arguments): void
+	{
+		$this->request->method('variable')->willReturnCallback(function ($name, $default) use ($action) {
+			return array('action' => $action, 'tag_id' => 2)[$name] ?? $default;
+		});
+		$this->request->method('is_ajax')->willReturn(true);
+		$controller = $this->getMockBuilder(admin_controller::class)
+			->setConstructorArgs(array(
+				$this->manager, $this->renderer, $this->language, $this->log,
+				$this->request, $this->template, $this->user,
+			))
+			->setMethods(array('save_tag', 'delete_tag', 'toggle_tag', 'reorder_tags', 'display_settings'))
+			->getMock();
+		$controller->expects(self::once())->method($method)->with(...$arguments);
+		$controller->expects(self::never())->method('display_settings');
 
 		$controller->main();
 	}
@@ -631,7 +725,7 @@ function trigger_error($message, $error = E_USER_NOTICE)
 
 function make_forum_select()
 {
-	return array();
+	return admin_controller_test::$forum_rows;
 }
 
 function check_link_hash()
