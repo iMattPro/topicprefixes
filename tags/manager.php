@@ -134,6 +134,41 @@ class manager
 	}
 
 	/**
+	 * Get exact selected search tags available in at least one allowed forum.
+	 *
+	 * Disabled tags remain resolvable so historical searches can be reopened,
+	 * but removed forum access must never disclose their definitions.
+	 *
+	 * @param array $tag_ids   Submitted tag definition identifiers
+	 * @param array $forum_ids Forums current user may search
+	 * @return array Search-ready tags keyed by identifier
+	 */
+	public function resolve_search_tags_for_forums(array $tag_ids, array $forum_ids): array
+	{
+		$forum_ids = array_fill_keys(array_filter(array_map('intval', $forum_ids)), true);
+		if (!$forum_ids)
+		{
+			return [];
+		}
+
+		$catalog = $this->get_catalog();
+		$selected = [];
+		foreach ($this->resolve_search_tags($tag_ids) as $tag_id => $tag)
+		{
+			$available = array_intersect_key(
+				$forum_ids,
+				array_fill_keys($catalog['tag_forums'][$tag_id] ?? [], true)
+			);
+			if ($available)
+			{
+				$selected[(int) $tag_id] = $tag;
+			}
+		}
+
+		return $selected;
+	}
+
+	/**
 	 * Get enabled tag definitions available in searchable forums.
 	 *
 	 * @param array $forum_ids Forums current user may search

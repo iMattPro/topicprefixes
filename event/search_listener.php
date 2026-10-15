@@ -19,6 +19,7 @@ use phpbb\topicprefixes\tags\assignment_manager;
 use phpbb\topicprefixes\tags\filter;
 use phpbb\topicprefixes\tags\manager;
 use phpbb\topicprefixes\tags\renderer;
+use phpbb\user;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 /**
@@ -50,6 +51,9 @@ class search_listener implements EventSubscriberInterface
 	/** @var auth Authorization service */
 	protected $auth;
 
+	/** @var user Current user and session */
+	protected $user;
+
 	/** @var config Board configuration */
 	protected $config;
 
@@ -80,6 +84,9 @@ class search_listener implements EventSubscriberInterface
 	/** @var string Current predefined search identifier */
 	protected $predefined_search = '';
 
+	/** @var array|null Searchable forum IDs for current session */
+	protected $searchable_forum_ids;
+
 	/**
 	 * Constructor.
 	 *
@@ -91,9 +98,10 @@ class search_listener implements EventSubscriberInterface
 	 * @param template           $template    Template object
 	 * @param language           $language    Language object
 	 * @param auth               $auth        Authorization service
+	 * @param user               $user        Current user and session
 	 * @param config             $config      Board configuration
 	 */
-	public function __construct(manager $manager, assignment_manager $assignments, filter $filter, renderer $renderer, request $request, template $template, language $language, auth $auth, config $config)
+	public function __construct(manager $manager, assignment_manager $assignments, filter $filter, renderer $renderer, request $request, template $template, language $language, auth $auth, user $user, config $config)
 	{
 		$this->manager = $manager;
 		$this->assignments = $assignments;
@@ -103,6 +111,7 @@ class search_listener implements EventSubscriberInterface
 		$this->template = $template;
 		$this->language = $language;
 		$this->auth = $auth;
+		$this->user = $user;
 		$this->config = $config;
 	}
 
@@ -232,10 +241,7 @@ class search_listener implements EventSubscriberInterface
 		}
 
 		$this->load_language();
-		$readable = array_keys($this->auth->acl_getf('f_read', true));
-		$searchable = array_keys($this->auth->acl_getf('f_search', true));
-		$listable = array_keys($this->auth->acl_getf('f_list_topics', true));
-		$forum_ids = array_values(array_intersect($readable, $searchable, $listable));
+		$forum_ids = $this->get_searchable_forum_ids();
 		$catalog = $this->manager->get_search_catalog($forum_ids);
 
 		// Retain explicitly selected historical tags when reopening search.
@@ -447,8 +453,35 @@ class search_listener implements EventSubscriberInterface
 		}
 
 		$requested_ids = array_values(array_unique(array_filter(array_map('intval', explode(',', $value)))));
-		$this->selected_tags = $requested_ids ? $this->manager->resolve_search_tags($requested_ids) : [];
+		$this->selected_tags = $requested_ids
+			? $this->manager->resolve_search_tags_for_forums($requested_ids, $this->get_searchable_forum_ids())
+			: [];
 		return $this->selected_tags;
+	}
+
+	/**
+	 * Get forums current user may search and has unlocked for this session.
+	 *
+	 * @return array Forum identifiers
+	 */
+	protected function get_searchable_forum_ids(): array
+	{
+		if ($this->searchable_forum_ids !== null)
+		{
+			return $this->searchable_forum_ids;
+		}
+
+		$readable = array_keys($this->auth->acl_getf('f_read', true));
+		$searchable = array_keys($this->auth->acl_getf('f_search', true));
+		$listable = array_keys($this->auth->acl_getf('f_list_topics', true));
+		$forum_ids = array_diff(
+			array_intersect($readable, $searchable, $listable),
+			$this->user->get_passworded_forums()
+		);
+		$forum_ids = array_values(array_unique(array_map('intval', $forum_ids)));
+		sort($forum_ids, SORT_NUMERIC);
+
+		return $this->searchable_forum_ids = $forum_ids;
 	}
 
 	/**

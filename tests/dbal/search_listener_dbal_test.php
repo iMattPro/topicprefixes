@@ -109,7 +109,7 @@ class search_listener_dbal_test extends tags_base
 	protected function listener(string $requested_tags, string $match): \phpbb\topicprefixes\event\search_listener
 	{
 		$manager = $this->getMockBuilder('\phpbb\topicprefixes\tags\manager')->disableOriginalConstructor()->getMock();
-		$manager->method('resolve_search_tags')->willReturnCallback(static function (array $ids) {
+		$manager->method('resolve_search_tags_for_forums')->willReturnCallback(static function (array $ids) {
 			$tags = [];
 			foreach ($ids as $id)
 			{
@@ -124,6 +124,9 @@ class search_listener_dbal_test extends tags_base
 		$visibility = $this->getMockBuilder('\phpbb\content_visibility')->disableOriginalConstructor()->getMock();
 		$visibility->method('get_global_visibility_sql')->willReturn('1=1');
 		$auth = $this->getMockBuilder('\phpbb\auth\auth')->disableOriginalConstructor()->getMock();
+		$auth->method('acl_getf')->willReturn([2 => ['allowed' => true]]);
+		$user = $this->getMockBuilder('\phpbb\user')->disableOriginalConstructor()->getMock();
+		$user->method('get_passworded_forums')->willReturn([]);
 		$filter = new \phpbb\topicprefixes\tags\filter(
 			$this->db,
 			$visibility,
@@ -142,6 +145,7 @@ class search_listener_dbal_test extends tags_base
 			$this->getMockBuilder('\phpbb\template\template')->disableOriginalConstructor()->getMock(),
 			$this->getMockBuilder('\phpbb\language\language')->disableOriginalConstructor()->getMock(),
 			$auth,
+			$user,
 			new \phpbb\config\config(['topicprefixes_search_enabled' => 1])
 		);
 	}

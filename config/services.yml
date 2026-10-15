@@ -95,6 +95,7 @@ services:
             - '@template'
             - '@language'
             - '@auth'
+            - '@user'
             - '@config'
         tags:
             - { name: event.listener }

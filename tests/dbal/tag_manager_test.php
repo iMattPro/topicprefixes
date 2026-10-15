@@ -156,7 +156,22 @@ class tag_manager_test extends tags_base
 		$manager = $this->create_tag_manager();
 
 		self::assertSame([], $manager->resolve_search_tags([0, 'invalid']));
+		self::assertSame([], $manager->resolve_search_tags_for_forums([1], [0, 'invalid']));
 		self::assertSame([], $manager->get_search_catalog([0, 'invalid']));
+	}
+
+	public function test_selected_search_tags_require_one_allowed_forum(): void
+	{
+		$manager = $this->create_tag_manager();
+
+		self::assertSame(
+			[1, 3],
+			array_keys($manager->resolve_search_tags_for_forums([1, 3, 4], [2]))
+		);
+		self::assertSame(
+			[1, 4],
+			array_keys($manager->resolve_search_tags_for_forums([1, 3, 4], [3]))
+		);
 	}
 
 	public function test_deleted_forum_availability_is_removed()
