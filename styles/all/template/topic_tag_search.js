@@ -117,6 +117,7 @@
 	}
 
 	input.addEventListener('focus', render);
+	input.addEventListener('click', render);
 	input.addEventListener('input', render);
 	input.addEventListener('keydown', (event) => {
 		if (event.key === 'ArrowDown' && visible.length) {
