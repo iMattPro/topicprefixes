@@ -68,7 +68,7 @@ class repair_tags extends command
 	/**
 	 * {@inheritdoc}
 	 */
-	protected function configure()
+	protected function configure(): void
 	{
 		$this
 			->setName('topicprefixes:repair-tags')
@@ -84,7 +84,7 @@ class repair_tags extends command
 	/**
 	 * {@inheritdoc}
 	 */
-	protected function execute(InputInterface $input, OutputInterface $output)
+	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
 		$io = new SymfonyStyle($input, $output);
 		if (!$input->isInteractive())
