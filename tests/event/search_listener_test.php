@@ -498,8 +498,7 @@ class search_listener_test extends \phpbb_test_case
 		$manager->method('resolve_search_tags_for_forums')->willReturn($this->search_tags([1]));
 		$language->method('lang')->with('TOPIC_TAG_SEARCH_SPHINX_UNSUPPORTED')->willReturn('Unsupported');
 
-		$this->expectException(\PHPUnit\Framework\Error\Notice::class);
-		$this->expectExceptionMessage('Unsupported');
+		$this->setExpectedTriggerError(E_USER_NOTICE, 'Unsupported');
 		$listener->validate_submission(new \phpbb\event\data([
 			'keywords' => 'security', 'author' => '', 'author_id' => 0, 'search_id' => '', 'submit' => true,
 		]));
